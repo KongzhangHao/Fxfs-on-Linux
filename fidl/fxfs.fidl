@@ -1,0 +1,132 @@
+// Copyright 2021 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library fuchsia.fxfs;
+
+using fuchsia.io;
+using zx;
+
+/// Designates the purpose of a key.
+type KeyPurpose = flexible enum {
+    /// The key will be used to encrypt metadata.
+    METADATA = 1;
+    /// The key will be used to encrypt data.
+    DATA = 2;
+};
+
+@discoverable
+protocol Crypt {
+    /// Creates a new key wrapped with the key identified by `wrapping_key_id`.  `owner` identifies
+    /// the owner of the key and must be supplied to `UnwrapKeys`.  The crypt service chooses a
+    /// `wrapping_key_id` which must be supplied to UnwrapKeys.  The `wrapping_key_id` has no
+    /// meaning to Fxfs.
+    CreateKey(struct {
+        owner uint64;
+        purpose KeyPurpose;
+    }) -> (struct {
+        wrapping_key_id uint64;
+        wrapped_key vector<uint8>:48;
+        unwrapped_key vector<uint8>:32;
+    }) error zx.status;
+
+    /// Unwraps a key that is wrapped by the key identified by `wrapping_key_id`.  `owner` must be
+    /// the same as that passed to `CreateKey`.  This can fail due to permission reasons, but an
+    /// incorrect key or owner will not fail; it will just return an unwrapped key that won't
+    /// actually decrpyt the data.
+    UnwrapKey(struct {
+        wrapping_key_id uint64;
+        owner uint64;
+        key vector<uint8>:48;
+    }) -> (struct {
+        unwrapped_key vector<uint8>:32;
+    }) error zx.status;
+};
+
+type CryptSettings = table {
+    1: active_data_wrapping_key_id uint64;
+    2: active_metadata_wrapping_key_id uint64;
+};
+
+@discoverable
+protocol CryptManagement {
+    /// Adds a new wrapping key to the Crypt service.  The new key will immediately be available
+    /// for unwrapping keys (Crypt::UnwrapKeys) but won't be used for wrapping keys until
+    /// CryptManagement::SetActiveKeys is called.
+    AddWrappingKey(struct {
+        wrapping_key_id uint64;
+        key vector<uint8>:32;
+    }) -> () error zx.status;
+
+    /// Updates the key which will be used for wrapping keys (Crypt::CreateKey).  `purpose`
+    /// describes which active key to modify.
+    SetActiveKey(struct {
+        purpose KeyPurpose;
+        wrapping_key_id uint64;
+    }) -> () error zx.status;
+
+    /// Forgets a wrapping key, preventing its use for future key-unwrapping.  All future calls to
+    /// Crypt::UnwrapKeys with that wrapping key ID will fail.
+    /// If either the data or metadata part of the key is active, an error is returned.
+    ForgetWrappingKey(struct {
+        wrapping_key_id uint64;
+    }) -> () error zx.status;
+};
+
+type MountOptions = resource struct {
+    /// An optional connection to a crypt client (for encrypted volumes).
+    crypt client_end:<Crypt, optional>;
+};
+
+type CheckOptions = resource struct {
+    /// An optional connection to a crypt client (for encrypted volumes).
+    crypt client_end:<Crypt, optional>;
+};
+
+protocol Volume {
+    /// Mounts the volume.  If the volume is encrypted, `options.crypt` should provide all key
+    /// access for the given volume.  `outgoing_directory` will contain the root and other services
+    /// exposed by the volume.  To lock the volume, call fuchsia.fs.Admin.Shutdown on the returned
+    /// handle.
+    // TODO(fxbug.dev/99182): Try to share options with fuchsia.fs_startup StartOptions.
+    Mount(resource struct {
+        outgoing_directory server_end:fuchsia.io.Directory;
+        options MountOptions;
+    }) -> () error zx.status;
+
+    /// Check the volume for consistency.  If the volume is encrypted, `options.crypt` should
+    /// provide all key access for the given volume.
+    Check(resource struct {
+        options CheckOptions;
+    }) -> () error zx.status;
+
+    // Set the limit in bytes on the volume.
+    SetLimit(struct {
+        bytes uint64;
+    }) -> () error zx.status;
+};
+
+/// fuchsia.fxfs.Volumes is only used for creating volumes.  Other operations (e.g. enumeration and
+/// deletion) are serviced by the `volumes` directory offered by Fxfs in its export root.  Volumes
+/// appear as files within this directory, and these files should also speak the
+/// `fuchsia.fxfs.Volume` protocol.
+///
+/// `crypt` should provide all key access for the given volume.  If it is not provided, then the
+/// volume is unencrypted.  `outgoing_directory` will be connected to the root directory of the
+/// volume.
+@discoverable
+protocol Volumes {
+    /// Creates a new volume identified by `name`.  `crypt` should provide all key access for the
+    /// given volume.  `outgoing_directory` will be connected to the root directory of the volume.
+    Create(resource struct {
+        name string:fuchsia.io.MAX_FILENAME;
+        crypt client_end:<Crypt, optional>;
+        outgoing_directory server_end:fuchsia.io.Directory;
+    }) -> () error zx.status;
+
+    /// Permanently deletes a volume identified by `name`.  If the volume is mounted, this call will
+    /// fail.
+    Remove(resource struct {
+        name string:fuchsia.io.MAX_FILENAME;
+    }) -> () error zx.status;
+};

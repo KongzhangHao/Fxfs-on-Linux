@@ -1,0 +1,59 @@
+// Copyright 2022 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+{
+    include: [
+        "inspect/client.shard.cml",
+        "syslog/client.shard.cml",
+    ],
+    program: {
+        runner: "elf",
+        binary: "bin/fxfs",
+        args: [ "component" ],
+        lifecycle: { stop_event: "notify" },
+        use_next_vdso: "true",
+    },
+    capabilities: [
+        {
+            directory: "volumes",
+            rights: [ "rw*" ],
+            path: "/volumes",
+        },
+        {
+            directory: "root",
+            rights: [ "rw*" ],
+            path: "/root",
+        },
+        {
+            protocol: [
+                "fuchsia.fs.Admin",
+                "fuchsia.fs.startup.Startup",
+                "fuchsia.fxfs.Volumes",
+            ],
+        },
+    ],
+    use: [
+        {
+            protocol: "fuchsia.memorypressure.Provider",
+            availability: "optional",
+        },
+    ],
+    expose: [
+        {
+            directory: "volumes",
+            from: "self",
+        },
+        {
+            directory: "root",
+            from: "self",
+        },
+        {
+            protocol: [
+                "fuchsia.fs.Admin",
+                "fuchsia.fs.startup.Startup",
+                "fuchsia.fxfs.Volumes",
+            ],
+            from: "self",
+        },
+    ],
+}
