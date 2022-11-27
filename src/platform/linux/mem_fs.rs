@@ -689,7 +689,7 @@ impl Filesystem for Fs {
                         2,
                     ),
                 ]
-                    .into_iter(),
+                .into_iter(),
             );
 
             let children = pre_children

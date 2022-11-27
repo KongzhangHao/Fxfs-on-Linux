@@ -2,25 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::ffi::{OsStr};
-use std::time::{Duration};
-use std::vec::IntoIter;
-use async_trait::async_trait;
-use fuse3::raw::prelude::*;
-use fuse3::raw::prelude::Filesystem as FuseFilesystem;
-use fuse3::{Result};
-use futures_util::stream::{Empty, Iter};
-use tracing::{Level};
 use crate::filesystem::SyncOptions;
-use crate::object_store::Directory;
 use crate::object_store::transaction::{Options, TransactionHandler};
+use crate::object_store::Directory;
 use crate::platform::linux::errors::cast_to_fuse_error;
 use crate::platform::linux::fuse_fs::FuseFs;
-
+use async_trait::async_trait;
+use fuse3::raw::prelude::Filesystem as FuseFilesystem;
+use fuse3::raw::prelude::*;
+use fuse3::Result;
+use futures_util::stream::{Empty, Iter};
+use std::ffi::OsStr;
+use std::time::Duration;
+use std::vec::IntoIter;
+use tracing::Level;
 
 const TTL: Duration = Duration::from_secs(1);
 const DEFAULT_FILE_MODE: u32 = 0o755;
-
 
 #[async_trait]
 impl FuseFilesystem for FuseFs {
@@ -37,13 +35,17 @@ impl FuseFilesystem for FuseFs {
 
     async fn lookup(&self, _req: Request, parent: u64, name: &OsStr) -> Result<ReplyEntry> {
         let dir = self.open_dir(parent).await?;
-        let lookup_result = dir.lookup(name.to_str().expect("Invalid UniCode file name")).await;
+        let lookup_result = dir
+            .lookup(name.to_str().expect("Invalid UniCode file name"))
+            .await;
 
         if let Ok(object) = lookup_result {
             if let Some((object_id, object_descriptor)) = object {
                 Ok(ReplyEntry {
                     ttl: TTL,
-                    attr: self.create_object_attr(object_id, object_descriptor).await?,
+                    attr: self
+                        .create_object_attr(object_id, object_descriptor)
+                        .await?,
                     generation: 0,
                 })
             } else {
@@ -53,7 +55,6 @@ impl FuseFilesystem for FuseFs {
             Err(cast_to_fuse_error(&lookup_result.err().unwrap()))
         }
     }
-
 
     async fn forget(&self, _req: Request, _inode: u64, _nlookup: u64) {
         unimplemented!()
@@ -87,7 +88,8 @@ impl FuseFilesystem for FuseFs {
         mode: u32,
         _umask: u32,
     ) -> Result<ReplyEntry> {
-        let mut transaction = self.fs
+        let mut transaction = self
+            .fs
             .clone()
             .new_transaction(&[], Options::default())
             .await
@@ -96,7 +98,10 @@ impl FuseFilesystem for FuseFs {
         let dir = self.open_dir(parent).await?;
 
         let child_dir_result = dir
-            .create_child_dir(&mut transaction, name.to_str().expect("Invalid UniCode file name"))
+            .create_child_dir(
+                &mut transaction,
+                name.to_str().expect("Invalid UniCode file name"),
+            )
             .await;
 
         if let Ok(child_dir) = child_dir_result {
@@ -106,7 +111,6 @@ impl FuseFilesystem for FuseFs {
         } else {
             Err(cast_to_fuse_error(&child_dir_result.err().unwrap()))
         }
-
     }
 
     async fn unlink(&self, _req: Request, parent: u64, name: &OsStr) -> Result<()> {
@@ -262,4 +266,3 @@ pub fn log_init() {
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 }
-

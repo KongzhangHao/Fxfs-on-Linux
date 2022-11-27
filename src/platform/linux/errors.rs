@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use fuse3::Errno;
 use crate::errors::FxfsError;
+use fuse3::Errno;
 
 pub fn cast_to_fuse_error(err: &anyhow::Error) -> Errno {
     if let Some(root_cause) = err.root_cause().downcast_ref::<FxfsError>() {
@@ -27,11 +27,9 @@ pub fn cast_to_fuse_error(err: &anyhow::Error) -> Errno {
             FxfsError::OutOfRange => libc::ERANGE.into(),
             FxfsError::AlreadyBound => libc::EALREADY.into(),
 
-            _ => libc::ENOTSUP.into()
+            _ => libc::ENOTSUP.into(),
         }
     } else {
         libc::ENOTSUP.into()
     }
-
-
 }

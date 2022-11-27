@@ -18,12 +18,11 @@ use fuse3::{Errno, MountOptions, Result};
 use futures_util::stream;
 use futures_util::stream::{Empty, Iter};
 use futures_util::StreamExt;
+use fxfs::platform::linux::fuse_handler::{log_init, FuseFs};
+use fxfs::platform::linux::mem_fs::Fs;
 use libc::mode_t;
 use tokio::sync::RwLock;
 use tracing::Level;
-use fxfs::platform::linux::fuse_handler::{FuseFs, log_init};
-use fxfs::platform::linux::mem_fs::{Fs};
-
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {

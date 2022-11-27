@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::time::SystemTime;
-use fuse3::FileType;
-use fuse3::raw::prelude::FileAttr;
 use crate::object_store::Timestamp;
+use fuse3::raw::prelude::FileAttr;
+use fuse3::FileType;
+use std::time::SystemTime;
 
-pub fn create_dir_attr(id: u64, size: u64, creation_time: Timestamp, modification_time: Timestamp, mode: u32) -> FileAttr {
+pub fn create_dir_attr(
+    id: u64,
+    size: u64,
+    creation_time: Timestamp,
+    modification_time: Timestamp,
+    mode: u32,
+) -> FileAttr {
     FileAttr {
         ino: id,
         generation: 0,
@@ -26,7 +32,13 @@ pub fn create_dir_attr(id: u64, size: u64, creation_time: Timestamp, modificatio
     }
 }
 
-pub fn create_file_attr(id: u64, size: u64, creation_time: Timestamp, modification_time: Timestamp, mode: u32) -> FileAttr {
+pub fn create_file_attr(
+    id: u64,
+    size: u64,
+    creation_time: Timestamp,
+    modification_time: Timestamp,
+    mode: u32,
+) -> FileAttr {
     FileAttr {
         ino: id,
         generation: 0,
@@ -44,7 +56,6 @@ pub fn create_file_attr(id: u64, size: u64, creation_time: Timestamp, modificati
         blksize: 0,
     }
 }
-
 
 impl From<Timestamp> for fuse3::Timestamp {
     fn from(time: Timestamp) -> fuse3::Timestamp {
