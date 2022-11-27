@@ -44,7 +44,7 @@ use {
     },
     storage_device::{Device, DeviceHolder},
 };
-
+// use crate::helper::*;
 
 
 pub const MIN_BLOCK_SIZE: u64 = 4096;
@@ -402,7 +402,7 @@ impl FxFilesystem {
         self.objects.root_parent_store()
     }
 
-    fn root_store(&self) -> Arc<ObjectStore> {
+    pub fn root_store(&self) -> Arc<ObjectStore> {
         self.objects.root_store()
     }
 
@@ -696,7 +696,6 @@ mod tests {
                 transaction::{Options, TransactionHandler},
             },
         },
-        fuchsia_async as fasync,
         futures::future::join_all,
         std::{
             collections::HashMap,

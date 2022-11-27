@@ -5,48 +5,48 @@
 #[macro_export]
 macro_rules! trace_duration {
     ($name:expr $(, $key:expr => $val:expr)*) => {
-        #[cfg(feature = "tracing")]
-        ::fuchsia_trace::duration!("fxfs", $name $(,$key => $val)*);
+        // #[cfg(feature = "tracing")]
+        // ::fuchsia_trace::duration!("fxfs", $name $(,$key => $val)*);
     }
 }
 
 #[macro_export]
 macro_rules! trace_instant {
     ($name:expr, $scope:expr $(, $key:expr => $val:expr)*) => {
-        #[cfg(feature = "tracing")]
-        ::fuchsia_trace::instant!("fxfs", $name, $scope $(,$key => $val)*);
+        // #[cfg(feature = "tracing")]
+        // ::fuchsia_trace::instant!("fxfs", $name, $scope $(,$key => $val)*);
     }
 }
 
 #[macro_export]
 macro_rules! trace_flow_begin {
     ($name:expr, $flow_id:expr $(, $key:expr => $val:expr)*) => {
-        #[cfg(feature = "tracing")]
-        ::fuchsia_trace::flow_begin!("fxfs", $name, $flow_id $(,$key => $val)*);
+        // #[cfg(feature = "tracing")]
+        // ::fuchsia_trace::flow_begin!("fxfs", $name, $flow_id $(,$key => $val)*);
     }
 }
 
 #[macro_export]
 macro_rules! trace_flow_step {
     ($name:expr, $flow_id:expr $(, $key:expr => $val:expr)*) => {
-        #[cfg(feature = "tracing")]
-        ::fuchsia_trace::flow_step!("fxfs", $name, $flow_id $(,$key => $val)*);
+        // #[cfg(feature = "tracing")]
+        // ::fuchsia_trace::flow_step!("fxfs", $name, $flow_id $(,$key => $val)*);
     }
 }
 
 #[macro_export]
 macro_rules! trace_flow_end {
     ($name:expr, $flow_id:expr $(, $key:expr => $val:expr)*) => {
-        #[cfg(feature = "tracing")]
-        ::fuchsia_trace::flow_end!("fxfs", $name, $flow_id $(,$key => $val)*);
+        // #[cfg(feature = "tracing")]
+        // ::fuchsia_trace::flow_end!("fxfs", $name, $flow_id $(,$key => $val)*);
     }
 }
 
 #[macro_export]
 macro_rules! async_enter {
     ($name:expr $(, $key:expr => $val:expr)*) => {
-        #[cfg(feature = "tracing")]
-        let _async_enter_guard = ::fuchsia_trace::async_enter!(
-            ::fuchsia_trace::Id::new(), "fxfs", $name $(, $key => $val)*);
+        // #[cfg(feature = "tracing")]
+        // let _async_enter_guard = ::fuchsia_trace::async_enter!(
+        //     ::fuchsia_trace::Id::new(), "fxfs", $name $(, $key => $val)*);
     }
 }

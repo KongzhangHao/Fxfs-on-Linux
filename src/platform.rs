@@ -10,3 +10,6 @@ pub use self::fuchsia::*;
 
 #[cfg(not(target_os = "fuchsia"))]
 pub mod log {}
+
+#[cfg(target_os = "linux")]
+pub mod linux;
