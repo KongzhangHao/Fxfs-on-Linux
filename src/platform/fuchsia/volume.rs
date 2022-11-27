@@ -158,10 +158,16 @@ impl FxVolume {
         let sync_status = self
             .store
             .filesystem()
-            .sync(SyncOptions { flush_device: true, ..Default::default() })
+            .sync(SyncOptions {
+                flush_device: true,
+                ..Default::default()
+            })
             .await;
         if let Err(e) = sync_status {
-            error!(error = e.as_value(), "Failed to sync filesystem; data may be lost");
+            error!(
+                error = e.as_value(),
+                "Failed to sync filesystem; data may be lost"
+            );
         }
     }
 
@@ -188,10 +194,10 @@ impl FxVolume {
                         )
                         .await?,
                     ) as Arc<dyn FxNode>,
-                    ObjectDescriptor::Directory => {
-                        Arc::new(FxDirectory::new(parent, Directory::open(self, object_id).await?))
-                            as Arc<dyn FxNode>
-                    }
+                    ObjectDescriptor::Directory => Arc::new(FxDirectory::new(
+                        parent,
+                        Directory::open(self, object_id).await?,
+                    )) as Arc<dyn FxNode>,
                     _ => bail!(FxfsError::Inconsistent),
                 };
                 placeholder.commit(&node);
@@ -231,7 +237,13 @@ impl FxVolume {
         }
         // If this fails, the graveyard should clean it up on next mount.
         self.store
-            .tombstone(object_id, Options { borrow_metadata_space: true, ..Default::default() })
+            .tombstone(
+                object_id,
+                Options {
+                    borrow_metadata_space: true,
+                    ..Default::default()
+                },
+            )
             .await?;
         Ok(())
     }
@@ -270,7 +282,10 @@ impl FxVolume {
         mut level_stream: impl Stream<Item = MemoryPressureLevel> + FusedStream + Unpin,
         terminate: oneshot::Receiver<()>,
     ) {
-        debug!(store_id = self.store.store_object_id(), "FxVolume::flush_task start");
+        debug!(
+            store_id = self.store.store_object_id(),
+            "FxVolume::flush_task start"
+        );
         let mut terminate = terminate.fuse();
         // Default to the normal flush period until updates come from the `level_stream`.
         let mut level = MemoryPressureLevel::Normal;
@@ -311,7 +326,10 @@ impl FxVolume {
                 self.flush_all_files().await;
             }
         }
-        debug!(store_id = self.store.store_object_id(), "FxVolume::flush_task end");
+        debug!(
+            store_id = self.store.store_object_id(),
+            "FxVolume::flush_task end"
+        );
     }
 
     /// Reports that a certain number of bytes will be dirtied in a pager-backed VMO.
@@ -343,7 +361,11 @@ impl FxVolume {
             }
             flushed += 1;
         }
-        debug!(store_id = self.store.store_object_id(), file_count = flushed, "FxVolume flushed");
+        debug!(
+            store_id = self.store.store_object_id(),
+            file_count = flushed,
+            "FxVolume flushed"
+        );
     }
 }
 
@@ -351,7 +373,11 @@ impl HandleOwner for FxVolume {
     type Buffer = VmoDataBuffer;
 
     fn create_data_buffer(&self, object_id: u64, initial_size: u64) -> Self::Buffer {
-        self.pager.create_vmo(object_id, initial_size).unwrap().try_into().unwrap()
+        self.pager
+            .create_vmo(object_id, initial_size)
+            .unwrap()
+            .try_into()
+            .unwrap()
     }
 }
 
@@ -365,10 +391,18 @@ impl AsRef<ObjectStore> for FxVolume {
 impl FsInspectVolume for FxVolume {
     async fn get_volume_data(&self) -> VolumeData {
         let object_count = self.store().object_count();
-        let (used_bytes, bytes_limit) =
-            self.store.filesystem().allocator().owner_allocation_info(self.store.store_object_id());
+        let (used_bytes, bytes_limit) = self
+            .store
+            .filesystem()
+            .allocator()
+            .owner_allocation_info(self.store.store_object_id());
         let encrypted = self.store().crypt().is_some();
-        VolumeData { bytes_limit, used_bytes, used_nodes: object_count, encrypted }
+        VolumeData {
+            bytes_limit,
+            used_bytes,
+            used_nodes: object_count,
+            encrypted,
+        }
     }
 }
 
@@ -615,7 +649,9 @@ mod tests {
         )
         .await;
         let buf = vec![0xaa as u8; 8192];
-        file::write(&src_file, buf.as_slice()).await.expect("Failed to write to file");
+        file::write(&src_file, buf.as_slice())
+            .await
+            .expect("Failed to write to file");
         close_file_checked(src_file).await;
 
         // The dst file is empty (so we can distinguish it).
@@ -639,9 +675,13 @@ mod tests {
                 .expect("No status"),
             &Status::NOT_FOUND,
         );
-        let file =
-            open_file_checked(&root, fio::OpenFlags::RIGHT_READABLE, fio::MODE_TYPE_FILE, "bar/b")
-                .await;
+        let file = open_file_checked(
+            &root,
+            fio::OpenFlags::RIGHT_READABLE,
+            fio::MODE_TYPE_FILE,
+            "bar/b",
+        )
+        .await;
         let buf = file::read(&file).await.expect("read file failed");
         assert_eq!(buf, vec![0xaa as u8; 8192]);
         close_file_checked(file).await;
@@ -686,8 +726,20 @@ mod tests {
             "foo/a",
         )
         .await;
-        open_file_checked(&root, fio::OpenFlags::CREATE, fio::MODE_TYPE_FILE, "foo/a/file").await;
-        open_dir_checked(&root, fio::OpenFlags::CREATE, fio::MODE_TYPE_DIRECTORY, "bar/b").await;
+        open_file_checked(
+            &root,
+            fio::OpenFlags::CREATE,
+            fio::MODE_TYPE_FILE,
+            "foo/a/file",
+        )
+        .await;
+        open_dir_checked(
+            &root,
+            fio::OpenFlags::CREATE,
+            fio::MODE_TYPE_DIRECTORY,
+            "bar/b",
+        )
+        .await;
 
         let (status, dst_token) = dst.get_token().await.expect("FIDL call failed");
         Status::ok(status).expect("get_token failed");
@@ -697,17 +749,26 @@ mod tests {
             .expect("rename failed");
 
         assert_eq!(
-            open_dir(&root, fio::OpenFlags::empty(), fio::MODE_TYPE_DIRECTORY, "foo/a")
-                .await
-                .expect_err("Open succeeded")
-                .root_cause()
-                .downcast_ref::<Status>()
-                .expect("No status"),
+            open_dir(
+                &root,
+                fio::OpenFlags::empty(),
+                fio::MODE_TYPE_DIRECTORY,
+                "foo/a"
+            )
+            .await
+            .expect_err("Open succeeded")
+            .root_cause()
+            .downcast_ref::<Status>()
+            .expect("No status"),
             &Status::NOT_FOUND,
         );
-        let f =
-            open_file_checked(&root, fio::OpenFlags::empty(), fio::MODE_TYPE_FILE, "bar/b/file")
-                .await;
+        let f = open_file_checked(
+            &root,
+            fio::OpenFlags::empty(),
+            fio::MODE_TYPE_FILE,
+            "bar/b/file",
+        )
+        .await;
         close_file_checked(f).await;
 
         close_dir_checked(dst).await;
@@ -724,8 +785,10 @@ mod tests {
         let filesystem = FxFilesystem::new_empty(device).await.unwrap();
         {
             let root_volume = root_volume(filesystem.clone()).await.unwrap();
-            let volume =
-                root_volume.new_volume("vol", Some(Arc::new(InsecureCrypt::new()))).await.unwrap();
+            let volume = root_volume
+                .new_volume("vol", Some(Arc::new(InsecureCrypt::new())))
+                .await
+                .unwrap();
             let mut transaction = filesystem
                 .clone()
                 .new_transaction(&[], Options::default())
@@ -741,7 +804,9 @@ mod tests {
             .expect("create_object failed")
             .object_id();
             transaction.commit().await.expect("commit failed");
-            let vol = FxVolumeAndRoot::new(Weak::new(), volume.clone(), 0).await.unwrap();
+            let vol = FxVolumeAndRoot::new(Weak::new(), volume.clone(), 0)
+                .await
+                .unwrap();
 
             let file = vol
                 .volume()
@@ -801,8 +866,10 @@ mod tests {
         let filesystem = FxFilesystem::new_empty(device).await.unwrap();
         {
             let root_volume = root_volume(filesystem.clone()).await.unwrap();
-            let volume =
-                root_volume.new_volume("vol", Some(Arc::new(InsecureCrypt::new()))).await.unwrap();
+            let volume = root_volume
+                .new_volume("vol", Some(Arc::new(InsecureCrypt::new())))
+                .await
+                .unwrap();
             let mut transaction = filesystem
                 .clone()
                 .new_transaction(&[], Options::default())
@@ -818,7 +885,9 @@ mod tests {
             .expect("create_object failed")
             .object_id();
             transaction.commit().await.expect("commit failed");
-            let vol = FxVolumeAndRoot::new(Weak::new(), volume.clone(), 0).await.unwrap();
+            let vol = FxVolumeAndRoot::new(Weak::new(), volume.clone(), 0)
+                .await
+                .unwrap();
 
             let file = vol
                 .volume()
@@ -855,7 +924,8 @@ mod tests {
                 mem_warning_period: Duration::from_millis(100),
                 mem_critical_period: Duration::from_secs(20),
             };
-            vol.volume().start_flush_task(flush_config, Some(&mem_pressure));
+            vol.volume()
+                .start_flush_task(flush_config, Some(&mem_pressure));
 
             // Send the memory pressure update.
             let _ = watcher_proxy
@@ -896,8 +966,10 @@ mod tests {
         let filesystem = FxFilesystem::new_empty(device).await.unwrap();
         {
             let root_volume = root_volume(filesystem.clone()).await.unwrap();
-            let volume =
-                root_volume.new_volume("vol", Some(Arc::new(InsecureCrypt::new()))).await.unwrap();
+            let volume = root_volume
+                .new_volume("vol", Some(Arc::new(InsecureCrypt::new())))
+                .await
+                .unwrap();
             let mut transaction = filesystem
                 .clone()
                 .new_transaction(&[], Options::default())
@@ -913,7 +985,9 @@ mod tests {
             .expect("create_object failed")
             .object_id();
             transaction.commit().await.expect("commit failed");
-            let vol = FxVolumeAndRoot::new(Weak::new(), volume.clone(), 0).await.unwrap();
+            let vol = FxVolumeAndRoot::new(Weak::new(), volume.clone(), 0)
+                .await
+                .unwrap();
 
             let file = vol
                 .volume()
@@ -950,7 +1024,8 @@ mod tests {
                 mem_warning_period: Duration::from_secs(20),
                 mem_critical_period: Duration::from_secs(20),
             };
-            vol.volume().start_flush_task(flush_config, Some(&mem_pressure));
+            vol.volume()
+                .start_flush_task(flush_config, Some(&mem_pressure));
 
             // Send the memory pressure update.
             watcher_proxy

@@ -95,7 +95,10 @@ impl TryFrom<ServerEnd<WatcherMarker>> for MemoryPressureMonitor {
         // Spawn a new task to continuously receive memory pressure updates.
         let watch_task_handle = fasync::Task::spawn(inner_clone.watch_requests(watcher_requests));
 
-        Ok(Self { inner, _watch_task_handle: watch_task_handle })
+        Ok(Self {
+            inner,
+            _watch_task_handle: watch_task_handle,
+        })
     }
 }
 
@@ -195,7 +198,11 @@ pub struct MemoryPressureLevelStream {
 
 impl MemoryPressureLevelStream {
     fn new(inner: Arc<Inner>) -> Self {
-        Self { inner, prev_level: MemoryPressureLevel::Normal, listener: None }
+        Self {
+            inner,
+            prev_level: MemoryPressureLevel::Normal,
+            listener: None,
+        }
     }
 }
 

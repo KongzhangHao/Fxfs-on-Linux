@@ -56,7 +56,11 @@ impl FifoMessageGroup {
     // Initialise a FifoMessageGroup given the request group ID.
     // `count` is set to 0 as no requests has been processed yet.
     fn new(group_id: u16) -> Self {
-        Self { group_id, status: zx::sys::ZX_OK, count: 0 }
+        Self {
+            group_id,
+            status: zx::sys::ZX_OK,
+            count: 0,
+        }
     }
 
     // Takes the FifoMessageGroup and converts it to a BlockFifoResponse.
@@ -94,7 +98,9 @@ impl FifoMessageGroups {
 
     // Returns the current MessageGroup with this group ID
     fn get(&mut self, group_id: u16) -> &mut FifoMessageGroup {
-        self.0.entry(group_id).or_insert_with(|| FifoMessageGroup::new(group_id))
+        self.0
+            .entry(group_id)
+            .or_insert_with(|| FifoMessageGroup::new(group_id))
     }
 
     // Remove a group when `BLOCKIO_GROUP_LAST` flag is set.
@@ -274,7 +280,11 @@ impl BlockServer {
             match &mut maybe_reply {
                 None => {
                     // maybe_reply will only be None if it's part of a group request
-                    self.message_groups.lock().unwrap().get(request.group_id).set_status(status);
+                    self.message_groups
+                        .lock()
+                        .unwrap()
+                        .get(request.group_id)
+                        .set_status(status);
                 }
                 Some(reply) => {
                     reply.status = status;
@@ -307,10 +317,16 @@ impl BlockServer {
                 }))?;
             }
             // TODO(fxbug.dev/89873)
-            VolumeAndNodeRequest::GetStats { clear: _, responder } => {
+            VolumeAndNodeRequest::GetStats {
+                clear: _,
+                responder,
+            } => {
                 responder.send(&mut Err(zx::Status::NOT_SUPPORTED.into_raw()))?;
             }
-            VolumeAndNodeRequest::OpenSession { session, control_handle: _ } => {
+            VolumeAndNodeRequest::OpenSession {
+                session,
+                control_handle: _,
+            } => {
                 let stream = session.into_stream()?;
                 let () = stream
                     .try_for_each(|request| async {
@@ -376,18 +392,28 @@ impl BlockServer {
             VolumeAndNodeRequest::GetName { responder } => {
                 responder.send(zx::sys::ZX_ERR_NOT_SUPPORTED, None)?;
             }
-            VolumeAndNodeRequest::QuerySlices { start_slices, responder } => {
+            VolumeAndNodeRequest::QuerySlices {
+                start_slices,
+                responder,
+            } => {
                 // Initialise slices with default value. `slices` will be converted to an array
                 // of size volume::MAX_SLICE_REQUESTS
                 let mut slices = vec![
-                    volume::VsliceRange { allocated: false, count: 0 };
+                    volume::VsliceRange {
+                        allocated: false,
+                        count: 0
+                    };
                     volume::MAX_SLICE_REQUESTS as usize
                 ];
 
                 let mut status = zx::sys::ZX_OK;
                 let mut response_count = 0;
                 for (slice, start_slice) in slices.iter_mut().zip(start_slices.into_iter()) {
-                    match self.file.is_allocated(start_slice * DEVICE_VOLUME_SLICE_SIZE).await {
+                    match self
+                        .file
+                        .is_allocated(start_slice * DEVICE_VOLUME_SLICE_SIZE)
+                        .await
+                    {
                         Ok((allocated, bytes)) => {
                             slice.count = round_up(bytes, DEVICE_VOLUME_SLICE_SIZE).unwrap();
                             slice.allocated = allocated;
@@ -438,7 +464,11 @@ impl BlockServer {
                     }
                 }
             }
-            VolumeAndNodeRequest::Extend { start_slice, slice_count, responder } => {
+            VolumeAndNodeRequest::Extend {
+                start_slice,
+                slice_count,
+                responder,
+            } => {
                 // TODO(fxbug.dev/89873): this is a hack. When extend is called, the extent is
                 // expected to be set as allocated. The easiest way to do this is to just
                 // write an extent of zeroed data. Another issue here is the size. The memory
@@ -454,14 +484,22 @@ impl BlockServer {
                 };
             }
             // TODO(fxbug.dev/89873)
-            VolumeAndNodeRequest::Shrink { start_slice: _, slice_count: _, responder } => {
+            VolumeAndNodeRequest::Shrink {
+                start_slice: _,
+                slice_count: _,
+                responder,
+            } => {
                 responder.send(zx::sys::ZX_OK)?;
             }
             // TODO(fxbug.dev/89873)
             VolumeAndNodeRequest::Destroy { responder } => {
                 responder.send(zx::sys::ZX_OK)?;
             }
-            VolumeAndNodeRequest::Clone { flags: _, object, control_handle: _ } => {
+            VolumeAndNodeRequest::Clone {
+                flags: _,
+                object,
+                control_handle: _,
+            } => {
                 // Have to move this into a non-async function to avoid Rust compiler's
                 // complaint about recursive async functions
                 self.handle_clone_request(object);
@@ -484,7 +522,9 @@ impl BlockServer {
             // TODO(fxbug.dev/89873)
             VolumeAndNodeRequest::GetConnectionInfo { responder } => {
                 // TODO(https://fxbug.dev/77623): Fill in rights and available operations.
-                let info = fio::ConnectionInfo { ..fio::ConnectionInfo::EMPTY };
+                let info = fio::ConnectionInfo {
+                    ..fio::ConnectionInfo::EMPTY
+                };
                 responder.send(info)?;
             }
             // TODO(fxbug.dev/89873)
@@ -513,14 +553,24 @@ impl BlockServer {
             }
             // TODO(fxbug.dev/89873) VolumeAndNodeRequest::GetAttributes { query, responder }
             // TODO(fxbug.dev/89873)
-            VolumeAndNodeRequest::SetAttr { flags: _, attributes: _, responder } => {
+            VolumeAndNodeRequest::SetAttr {
+                flags: _,
+                attributes: _,
+                responder,
+            } => {
                 responder.send(zx::sys::ZX_ERR_NOT_SUPPORTED)?;
             }
             // TODO(fxbug.dev/89873)
-            VolumeAndNodeRequest::GetAttributes { query: _, responder } => {
+            VolumeAndNodeRequest::GetAttributes {
+                query: _,
+                responder,
+            } => {
                 responder.send(&mut Err(zx::sys::ZX_ERR_NOT_SUPPORTED))?;
             }
-            VolumeAndNodeRequest::UpdateAttributes { payload: _, responder } => {
+            VolumeAndNodeRequest::UpdateAttributes {
+                payload: _,
+                responder,
+            } => {
                 responder.send(&mut Err(zx::sys::ZX_ERR_NOT_SUPPORTED))?;
             }
             // TODO(fxbug.dev/89873)
@@ -528,7 +578,10 @@ impl BlockServer {
                 responder.send(zx::sys::ZX_OK, fio::OpenFlags::NODE_REFERENCE)?;
             }
             // TODO(fxbug.dev/89873)
-            VolumeAndNodeRequest::SetFlags { flags: _, responder } => {
+            VolumeAndNodeRequest::SetFlags {
+                flags: _,
+                responder,
+            } => {
                 responder.send(zx::sys::ZX_ERR_NOT_SUPPORTED)?;
             }
             // TODO(fxbug.dev/105608)
@@ -805,10 +858,19 @@ mod tests {
                 .await
                 .expect("RemoteBlockClient::new failed");
                 let vmo = zx::Vmo::create(1).expect("Vmo::create failed");
-                let vmo_id = remote_block_device.attach_vmo(&vmo).await.expect("attach_vmo failed");
+                let vmo_id = remote_block_device
+                    .attach_vmo(&vmo)
+                    .await
+                    .expect("attach_vmo failed");
                 let vmo_id_copy = VmoId::new(vmo_id.id());
-                remote_block_device.detach_vmo(vmo_id).await.expect("detach failed");
-                remote_block_device.detach_vmo(vmo_id_copy).await.expect_err("detach succeeded");
+                remote_block_device
+                    .detach_vmo(vmo_id)
+                    .await
+                    .expect("detach failed");
+                remote_block_device
+                    .detach_vmo(vmo_id_copy)
+                    .await
+                    .expect_err("detach succeeded");
             },
             async {
                 let fixture = TestFixture::new().await;
@@ -842,7 +904,10 @@ mod tests {
                 .await
                 .expect("RemoteBlockClient::new failed");
                 let vmo = zx::Vmo::create(131072).expect("create vmo failed");
-                let vmo_id = remote_block_device.attach_vmo(&vmo).await.expect("attach_vmo failed");
+                let vmo_id = remote_block_device
+                    .attach_vmo(&vmo)
+                    .await
+                    .expect("attach_vmo failed");
 
                 // Must write with length as a multiple of the block_size
                 let offset = remote_block_device.block_size() as usize;
@@ -871,7 +936,10 @@ mod tests {
                     &vec![0; remote_block_device.block_size() as usize][..]
                 );
 
-                remote_block_device.detach_vmo(vmo_id).await.expect("detach failed");
+                remote_block_device
+                    .detach_vmo(vmo_id)
+                    .await
+                    .expect("detach failed");
             },
             async {
                 let fixture = TestFixture::new().await;
@@ -934,8 +1002,10 @@ mod tests {
                 let original_block_device = ClientEnd::<VolumeAndNodeMarker>::new(client_channel)
                     .into_proxy()
                     .expect("convert into proxy failed");
-                let (status, attr) =
-                    original_block_device.get_attr().await.expect("get_attr failed");
+                let (status, attr) = original_block_device
+                    .get_attr()
+                    .await
+                    .expect("get_attr failed");
                 zx::Status::ok(status).expect("block get_attr failed");
                 assert_eq!(attr.mode, fio::MODE_TYPE_BLOCK_DEVICE);
             },
@@ -1028,8 +1098,10 @@ mod tests {
                 let serving = blobfs.serve().await.expect("serve blobfs failed");
 
                 let content = String::from("Hello world!").into_bytes();
-                let merkle_root_hash =
-                    MerkleTree::from_reader(&content[..]).unwrap().root().to_string();
+                let merkle_root_hash = MerkleTree::from_reader(&content[..])
+                    .unwrap()
+                    .root()
+                    .to_string();
                 {
                     let file = fuchsia_fs::directory::open_file(
                         serving.root(),
@@ -1063,8 +1135,9 @@ mod tests {
                     )
                     .await
                     .expect("open file failed");
-                    let read_content =
-                        fuchsia_fs::file::read(&file).await.expect("read from file failed");
+                    let read_content = fuchsia_fs::file::read(&file)
+                        .await
+                        .expect("read from file failed");
                     assert_eq!(content, read_content);
                 }
 

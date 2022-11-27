@@ -1,20 +1,23 @@
-use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-use std::time::Duration;
-
-use crate::crypt::Crypt;
-use crate::filesystem::{FxFilesystem, OpenFxFilesystem};
-use crate::object_handle::{GetProperties, ObjectProperties};
-use crate::object_store::volume::root_volume;
-use crate::object_store::{
-    Directory, HandleOptions, ObjectDescriptor, ObjectStore, StoreObjectHandle,
+use crate::{
+    crypt::Crypt,
+    filesystem::{FxFilesystem, OpenFxFilesystem},
+    object_handle::{GetProperties, ObjectProperties},
+    object_store::{
+        volume::root_volume, Directory, HandleOptions, ObjectDescriptor, ObjectStore,
+        StoreObjectHandle,
+    },
+    platform::linux::{
+        attr::{create_dir_attr, create_file_attr},
+        errors::cast_to_fuse_error,
+    },
 };
-use crate::platform::linux::attr::{create_dir_attr, create_file_attr};
-use crate::platform::linux::errors::cast_to_fuse_error;
-use fuse3::raw::prelude::*;
-use fuse3::Result;
-use storage_device::fake_device::FakeDevice;
-use storage_device::DeviceHolder;
+use fuse3::{raw::prelude::*, Result};
+use std::{
+    fmt::{Debug, Formatter},
+    sync::Arc,
+    time::Duration,
+};
+use storage_device::{fake_device::FakeDevice, DeviceHolder};
 use tokio::sync::RwLock;
 
 const TEST_DEVICE_BLOCK_SIZE: u32 = 512;

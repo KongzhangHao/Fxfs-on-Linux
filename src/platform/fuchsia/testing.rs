@@ -55,7 +55,11 @@ impl TestFixture {
                 root_volume
                     .new_volume(
                         "vol",
-                        if encrypted { Some(Arc::new(InsecureCrypt::new())) } else { None },
+                        if encrypted {
+                            Some(Arc::new(InsecureCrypt::new()))
+                        } else {
+                            None
+                        },
                     )
                     .await
                     .unwrap(),
@@ -72,7 +76,11 @@ impl TestFixture {
                 root_volume
                     .volume(
                         "vol",
-                        if encrypted { Some(Arc::new(InsecureCrypt::new())) } else { None },
+                        if encrypted {
+                            Some(Arc::new(InsecureCrypt::new()))
+                        } else {
+                            None
+                        },
                     )
                     .await
                     .unwrap(),
@@ -93,7 +101,14 @@ impl TestFixture {
             Path::dot(),
             ServerEnd::new(server_end.into_channel()),
         );
-        Self { state: Some(State { filesystem, volume, root }), encrypted }
+        Self {
+            state: Some(State {
+                filesystem,
+                volume,
+                root,
+            }),
+            encrypted,
+        }
     }
 
     /// Closes the test fixture, shutting down the filesystem. Returns the device, which can be
@@ -144,12 +159,18 @@ impl TestFixture {
             }),
             ..Default::default()
         };
-        fsck_with_options(filesystem.clone(), &options).await.expect("fsck failed");
+        fsck_with_options(filesystem.clone(), &options)
+            .await
+            .expect("fsck failed");
         fsck_volume_with_options(
             filesystem.as_ref(),
             &options,
             store_id,
-            if self.encrypted { Some(Arc::new(InsecureCrypt::new())) } else { None },
+            if self.encrypted {
+                Some(Arc::new(InsecureCrypt::new()))
+            } else {
+                None
+            },
         )
         .await
         .expect("fsck_volume failed");
@@ -173,17 +194,32 @@ impl TestFixture {
 
 impl Drop for TestFixture {
     fn drop(&mut self) {
-        assert!(self.state.is_none(), "Did you forget to call TestFixture::close?");
+        assert!(
+            self.state.is_none(),
+            "Did you forget to call TestFixture::close?"
+        );
     }
 }
 
 pub async fn close_file_checked(file: fio::FileProxy) {
-    file.sync().await.expect("FIDL call failed").map_err(Status::from_raw).expect("sync failed");
-    file.close().await.expect("FIDL call failed").map_err(Status::from_raw).expect("close failed");
+    file.sync()
+        .await
+        .expect("FIDL call failed")
+        .map_err(Status::from_raw)
+        .expect("sync failed");
+    file.close()
+        .await
+        .expect("FIDL call failed")
+        .map_err(Status::from_raw)
+        .expect("close failed");
 }
 
 pub async fn close_dir_checked(dir: fio::DirectoryProxy) {
-    dir.close().await.expect("FIDL call failed").map_err(Status::from_raw).expect("close failed");
+    dir.close()
+        .await
+        .expect("FIDL call failed")
+        .map_err(Status::from_raw)
+        .expect("close failed");
 }
 
 // Utility function to open a new node connection under |dir|.
@@ -206,7 +242,9 @@ pub async fn open_file_checked(
     mode: u32,
     path: &str,
 ) -> fio::FileProxy {
-    open_file(dir, flags, mode, path).await.expect("open_file failed")
+    open_file(dir, flags, mode, path)
+        .await
+        .expect("open_file failed")
 }
 
 // Utility function to open a new node connection under |dir|.
@@ -229,7 +267,9 @@ pub async fn open_dir_checked(
     mode: u32,
     path: &str,
 ) -> fio::DirectoryProxy {
-    open_dir(dir, flags, mode, path).await.expect("open_dir failed")
+    open_dir(dir, flags, mode, path)
+        .await
+        .expect("open_dir failed")
 }
 
 /// Utility function to write to an `FxFile`.

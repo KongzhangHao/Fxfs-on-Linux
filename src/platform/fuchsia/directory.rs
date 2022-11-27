@@ -85,7 +85,10 @@ impl FxDirectory {
 
     pub fn set_deleted(&self) {
         self.directory.set_deleted();
-        self.watchers.lock().unwrap().send_event(&mut SingleNameEventProducer::deleted());
+        self.watchers
+            .lock()
+            .unwrap()
+            .send_event(&mut SingleNameEventProducer::deleted());
     }
 
     /// Acquires a transaction with the appropriate locks to unlink |name|. Returns the transaction,
@@ -122,12 +125,18 @@ impl FxDirectory {
             let transaction = fs
                 .new_transaction(
                     &lock_keys,
-                    Options { borrow_metadata_space, ..Default::default() },
+                    Options {
+                        borrow_metadata_space,
+                        ..Default::default()
+                    },
                 )
                 .await?;
 
-            let (object_id, object_descriptor) =
-                self.directory.lookup(name).await?.ok_or(FxfsError::NotFound)?;
+            let (object_id, object_descriptor) = self
+                .directory
+                .lookup(name)
+                .await?
+                .ok_or(FxfsError::NotFound)?;
             match object_descriptor {
                 ObjectDescriptor::File => {
                     return Ok((transaction, object_id, object_descriptor));
@@ -157,16 +166,24 @@ impl FxDirectory {
         let mut current_node = self.clone() as Arc<dyn FxNode>;
         loop {
             let last_segment = path.is_single_component();
-            let current_dir =
-                current_node.into_any().downcast::<FxDirectory>().map_err(|_| FxfsError::NotDir)?;
+            let current_dir = current_node
+                .into_any()
+                .downcast::<FxDirectory>()
+                .map_err(|_| FxfsError::NotDir)?;
             let name = path.next().unwrap();
 
             // Create the transaction here if we might need to create the object so that we have a
             // lock in place.
-            let keys =
-                [LockKey::object(store.store_object_id(), current_dir.directory.object_id())];
+            let keys = [LockKey::object(
+                store.store_object_id(),
+                current_dir.directory.object_id(),
+            )];
             let transaction_or_guard = if last_segment && flags.intersects(fio::OpenFlags::CREATE) {
-                Left(fs.clone().new_transaction(&keys, Options::default()).await?)
+                Left(
+                    fs.clone()
+                        .new_transaction(&keys, Options::default())
+                        .await?,
+                )
             } else {
                 // When child objects are created, the object is created along with the directory
                 // entry in the same transaction, and so we need to hold a read lock over the lookup
@@ -209,7 +226,9 @@ impl FxDirectory {
                 None => {
                     if let Left(mut transaction) = transaction_or_guard {
                         let node = OpenedNode::new(
-                            current_dir.create_child(&mut transaction, name, mode).await?,
+                            current_dir
+                                .create_child(&mut transaction, name, mode)
+                                .await?,
                         );
                         if let GetResult::Placeholder(p) =
                             self.volume().cache().get_or_reserve(node.object_id()).await
@@ -247,10 +266,10 @@ impl FxDirectory {
                 Some(self.clone()),
                 self.directory.create_child_dir(transaction, name).await?,
             )) as Arc<dyn FxNode>),
-            0 | fio::MODE_TYPE_FILE | fio::MODE_TYPE_BLOCK_DEVICE => {
-                Ok(FxFile::new(self.directory.create_child_file(transaction, name).await?)
-                    as Arc<dyn FxNode>)
-            }
+            0 | fio::MODE_TYPE_FILE | fio::MODE_TYPE_BLOCK_DEVICE => Ok(FxFile::new(
+                self.directory.create_child_file(transaction, name).await?,
+            )
+                as Arc<dyn FxNode>),
             fio::MODE_TYPE_SERVICE => {
                 bail!(FxfsError::NotSupported)
             }
@@ -260,12 +279,18 @@ impl FxDirectory {
 
     /// Called to indicate a file or directory was removed from this directory.
     pub(crate) fn did_remove(&self, name: &str) {
-        self.watchers.lock().unwrap().send_event(&mut SingleNameEventProducer::removed(name));
+        self.watchers
+            .lock()
+            .unwrap()
+            .send_event(&mut SingleNameEventProducer::removed(name));
     }
 
     /// Called to indicate a file or directory was added to this directory.
     pub(crate) fn did_add(&self, name: &str) {
-        self.watchers.lock().unwrap().send_event(&mut SingleNameEventProducer::added(name));
+        self.watchers
+            .lock()
+            .unwrap()
+            .send_event(&mut SingleNameEventProducer::added(name));
     }
 }
 
@@ -322,27 +347,45 @@ impl MutableDirectory for FxDirectory {
         if self.is_deleted() {
             return Err(Status::ACCESS_DENIED);
         }
-        let source_id =
-            match source_dir.directory.lookup(source_name).await.map_err(map_to_status)? {
-                Some((object_id, ObjectDescriptor::File)) => object_id,
-                None => return Err(Status::NOT_FOUND),
-                _ => return Err(Status::NOT_SUPPORTED),
-            };
-        if self.directory.lookup(&name).await.map_err(map_to_status)?.is_some() {
+        let source_id = match source_dir
+            .directory
+            .lookup(source_name)
+            .await
+            .map_err(map_to_status)?
+        {
+            Some((object_id, ObjectDescriptor::File)) => object_id,
+            None => return Err(Status::NOT_FOUND),
+            _ => return Err(Status::NOT_SUPPORTED),
+        };
+        if self
+            .directory
+            .lookup(&name)
+            .await
+            .map_err(map_to_status)?
+            .is_some()
+        {
             return Err(Status::ALREADY_EXISTS);
         }
         self.directory
             .insert_child(&mut transaction, &name, source_id, ObjectDescriptor::File)
             .await
             .map_err(map_to_status)?;
-        store.adjust_refs(&mut transaction, source_id, 1).await.map_err(map_to_status)?;
-        transaction.commit_with_callback(|_| self.did_add(&name)).await.map_err(map_to_status)?;
+        store
+            .adjust_refs(&mut transaction, source_id, 1)
+            .await
+            .map_err(map_to_status)?;
+        transaction
+            .commit_with_callback(|_| self.did_add(&name))
+            .await
+            .map_err(map_to_status)?;
         Ok(())
     }
 
     async fn unlink(self: Arc<Self>, name: &str, must_be_directory: bool) -> Result<(), Status> {
-        let (mut transaction, _object_id, object_descriptor) =
-            self.acquire_transaction_for_unlink(&[], name, true).await.map_err(map_to_status)?;
+        let (mut transaction, _object_id, object_descriptor) = self
+            .acquire_transaction_for_unlink(&[], name, true)
+            .await
+            .map_err(map_to_status)?;
         if let ObjectDescriptor::Directory = object_descriptor {
         } else if must_be_directory {
             return Err(Status::NOT_DIR);
@@ -401,8 +444,14 @@ impl MutableDirectory for FxDirectory {
         let mut transaction = fs
             .clone()
             .new_transaction(
-                &[LockKey::object(self.store().store_object_id(), self.directory.object_id())],
-                Options { borrow_metadata_space: true, ..Default::default() },
+                &[LockKey::object(
+                    self.store().store_object_id(),
+                    self.directory.object_id(),
+                )],
+                Options {
+                    borrow_metadata_space: true,
+                    ..Default::default()
+                },
             )
             .await
             .map_err(map_to_status)?;
@@ -419,7 +468,10 @@ impl MutableDirectory for FxDirectory {
         self.volume()
             .store()
             .filesystem()
-            .sync(SyncOptions { flush_device: true, ..Default::default() })
+            .sync(SyncOptions {
+                flush_device: true,
+                ..Default::default()
+            })
             .await
             .map_err(map_to_status)
     }
@@ -434,15 +486,20 @@ impl MutableDirectory for FxDirectory {
             return Err(Status::INVALID_ARGS);
         }
         let (src, dst) = (src_name.peek().unwrap(), dst_name.peek().unwrap());
-        let src_dir =
-            src_dir.into_any().downcast::<FxDirectory>().map_err(|_| Err(Status::NOT_DIR))?;
+        let src_dir = src_dir
+            .into_any()
+            .downcast::<FxDirectory>()
+            .map_err(|_| Err(Status::NOT_DIR))?;
 
         // Acquire a transaction that locks |src_dir|, |self|, and |dst_name| if it exists.
         let store = self.store();
         let fs = store.filesystem();
         let (mut transaction, dst_id_and_descriptor) = match self
             .acquire_transaction_for_unlink(
-                &[LockKey::object(store.store_object_id(), src_dir.object_id())],
+                &[LockKey::object(
+                    store.store_object_id(),
+                    src_dir.object_id(),
+                )],
                 dst,
                 false,
             )
@@ -458,7 +515,10 @@ impl MutableDirectory for FxDirectory {
                         ],
                         // It's ok to borrow metadata space here since after compaction, it should
                         // be a wash.
-                        Options { borrow_metadata_space: true, ..Default::default() },
+                        Options {
+                            borrow_metadata_space: true,
+                            ..Default::default()
+                        },
                     )
                     .await
                     .map_err(map_to_status)?;
@@ -548,7 +608,10 @@ impl MutableDirectory for FxDirectory {
             .map_err(map_to_status)?;
 
         if let ReplacedChild::File(id) = replace_result {
-            self.volume().maybe_purge_file(id).await.map_err(map_to_status)?;
+            self.volume()
+                .maybe_purge_file(id)
+                .await
+                .map_err(map_to_status)?;
         }
         Ok(())
     }
@@ -566,37 +629,39 @@ impl DirectoryEntry for FxDirectory {
         // Ignore the provided scope which might be for the parent pseudo filesystem and use the
         // volume's scope instead.
         let scope = self.volume().scope().clone();
-        scope.clone().spawn_with_shutdown(move |shutdown| async move {
-            match self.lookup(flags, mode, path).await {
-                Err(e) => send_on_open_with_error(flags, server_end, map_to_status(e)),
-                Ok(node) => {
-                    if node.is::<FxDirectory>() {
-                        MutableConnection::create_connection_async(
-                            scope,
-                            node.downcast::<FxDirectory>()
-                                .unwrap_or_else(|_| unreachable!())
-                                .take(),
-                            flags,
-                            server_end,
-                            shutdown,
-                        )
-                        .await;
-                    } else if node.is::<FxFile>() {
-                        let node = node.downcast::<FxFile>().unwrap_or_else(|_| unreachable!());
-                        if mode & fio::MODE_TYPE_MASK == fio::MODE_TYPE_BLOCK_DEVICE {
-                            let mut server =
-                                BlockServer::new(node, scope, server_end.into_channel());
-                            let _ = server.run().await;
+        scope
+            .clone()
+            .spawn_with_shutdown(move |shutdown| async move {
+                match self.lookup(flags, mode, path).await {
+                    Err(e) => send_on_open_with_error(flags, server_end, map_to_status(e)),
+                    Ok(node) => {
+                        if node.is::<FxDirectory>() {
+                            MutableConnection::create_connection_async(
+                                scope,
+                                node.downcast::<FxDirectory>()
+                                    .unwrap_or_else(|_| unreachable!())
+                                    .take(),
+                                flags,
+                                server_end,
+                                shutdown,
+                            )
+                            .await;
+                        } else if node.is::<FxFile>() {
+                            let node = node.downcast::<FxFile>().unwrap_or_else(|_| unreachable!());
+                            if mode & fio::MODE_TYPE_MASK == fio::MODE_TYPE_BLOCK_DEVICE {
+                                let mut server =
+                                    BlockServer::new(node, scope, server_end.into_channel());
+                                let _ = server.run().await;
+                            } else {
+                                FxFile::create_connection(node, scope, flags, server_end, shutdown)
+                                    .await;
+                            }
                         } else {
-                            FxFile::create_connection(node, scope, flags, server_end, shutdown)
-                                .await;
+                            unreachable!();
                         }
-                    } else {
-                        unreachable!();
                     }
-                }
-            };
-        });
+                };
+            });
     }
 
     fn entry_info(&self) -> EntryInfo {
@@ -620,8 +685,9 @@ impl Directory for FxDirectory {
 
         let store = self.store();
         let fs = store.filesystem();
-        let _read_guard =
-            fs.read_lock(&[LockKey::object(store.store_object_id(), self.object_id())]).await;
+        let _read_guard = fs
+            .read_lock(&[LockKey::object(store.store_object_id(), self.object_id())])
+            .await;
         if self.is_deleted() {
             return Ok((TraversalPosition::End, sink.seal()));
         }
@@ -629,9 +695,10 @@ impl Directory for FxDirectory {
         let starting_name = match pos {
             TraversalPosition::Start => {
                 // Synthesize a "." entry if we're at the start of the stream.
-                match sink
-                    .append(&EntryInfo::new(fio::INO_UNKNOWN, fio::DirentType::Directory), ".")
-                {
+                match sink.append(
+                    &EntryInfo::new(fio::INO_UNKNOWN, fio::DirentType::Directory),
+                    ".",
+                ) {
                     AppendResult::Ok(new_sink) => sink = new_sink,
                     AppendResult::Sealed(sealed) => {
                         // Note that the VFS should have yielded an error since the first entry
@@ -648,8 +715,11 @@ impl Directory for FxDirectory {
 
         let layer_set = self.store().tree().layer_set();
         let mut merger = layer_set.merger();
-        let mut iter =
-            self.directory.iter_from(&mut merger, starting_name).await.map_err(map_to_status)?;
+        let mut iter = self
+            .directory
+            .iter_from(&mut merger, starting_name)
+            .await
+            .map_err(map_to_status)?;
         while let Some((name, object_id, object_descriptor)) = iter.get() {
             let entry_type = match object_descriptor {
                 ObjectDescriptor::File => fio::DirentType::File,
@@ -681,7 +751,10 @@ impl Directory for FxDirectory {
         watcher: DirectoryWatcher,
     ) -> Result<(), Status> {
         let controller =
-            self.watchers.lock().unwrap().add(scope.clone(), self.clone(), mask, watcher);
+            self.watchers
+                .lock()
+                .unwrap()
+                .add(scope.clone(), self.clone(), mask, watcher);
         if mask.contains(fio::WatchMask::EXISTING) && !self.is_deleted() {
             scope.spawn(async move {
                 let layer_set = self.store().tree().layer_set();
@@ -689,7 +762,10 @@ impl Directory for FxDirectory {
                 let mut iter = match self.directory.iter_from(&mut merger, "").await {
                     Ok(iter) => iter,
                     Err(e) => {
-                        error!(error = e.as_value(), "Failed to iterate directory for watch",);
+                        error!(
+                            error = e.as_value(),
+                            "Failed to iterate directory for watch",
+                        );
                         // TODO(fxbug.dev/96086): This really should close the watcher connection
                         // with an epitaph so that the watcher knows.
                         return;
@@ -701,7 +777,10 @@ impl Directory for FxDirectory {
                 while let Some((name, _, _)) = iter.get() {
                     controller.send_event(&mut SingleNameEventProducer::existing(name));
                     if let Err(e) = iter.advance().await {
-                        error!(error = e.as_value(), "Failed to iterate directory for watch",);
+                        error!(
+                            error = e.as_value(),
+                            "Failed to iterate directory for watch",
+                        );
                         return;
                     }
                 }
@@ -716,7 +795,11 @@ impl Directory for FxDirectory {
     }
 
     async fn get_attrs(&self) -> Result<fio::NodeAttributes, Status> {
-        let props = self.directory.get_properties().await.map_err(map_to_status)?;
+        let props = self
+            .directory
+            .get_properties()
+            .await
+            .map_err(map_to_status)?;
         Ok(fio::NodeAttributes {
             mode: fio::MODE_TYPE_DIRECTORY
                 | rights_to_posix_mode_bits(/*r*/ true, /*w*/ true, /*x*/ false),
@@ -794,12 +877,17 @@ mod tests {
         let root = fixture.root();
 
         assert_eq!(
-            open_file(&root, fio::OpenFlags::RIGHT_READABLE, fio::MODE_TYPE_FILE, "foo")
-                .await
-                .expect_err("Open succeeded")
-                .root_cause()
-                .downcast_ref::<Status>()
-                .expect("No status"),
+            open_file(
+                &root,
+                fio::OpenFlags::RIGHT_READABLE,
+                fio::MODE_TYPE_FILE,
+                "foo"
+            )
+            .await
+            .expect_err("Open succeeded")
+            .root_cause()
+            .downcast_ref::<Status>()
+            .expect("No status"),
             &Status::NOT_FOUND,
         );
 
@@ -820,9 +908,13 @@ mod tests {
         .await;
         close_file_checked(f).await;
 
-        let f =
-            open_file_checked(&root, fio::OpenFlags::RIGHT_READABLE, fio::MODE_TYPE_FILE, "foo")
-                .await;
+        let f = open_file_checked(
+            &root,
+            fio::OpenFlags::RIGHT_READABLE,
+            fio::MODE_TYPE_FILE,
+            "foo",
+        )
+        .await;
         close_file_checked(f).await;
 
         fixture.close().await;
@@ -940,12 +1032,17 @@ mod tests {
             .expect("unlink failed");
 
         assert_eq!(
-            open_file(&root, fio::OpenFlags::RIGHT_READABLE, fio::MODE_TYPE_FILE, "foo")
-                .await
-                .expect_err("Open succeeded")
-                .root_cause()
-                .downcast_ref::<Status>()
-                .expect("No status"),
+            open_file(
+                &root,
+                fio::OpenFlags::RIGHT_READABLE,
+                fio::MODE_TYPE_FILE,
+                "foo"
+            )
+            .await
+            .expect_err("Open succeeded")
+            .root_cause()
+            .downcast_ref::<Status>()
+            .expect("No status"),
             &Status::NOT_FOUND,
         );
 
@@ -960,7 +1057,9 @@ mod tests {
         )
         .await;
         let buf = vec![0xaa as u8; 8192];
-        file::write(&file, buf.as_slice()).await.expect("Failed to write new file");
+        file::write(&file, buf.as_slice())
+            .await
+            .expect("Failed to write new file");
         close_file_checked(file).await;
 
         fixture.close().await;
@@ -988,12 +1087,17 @@ mod tests {
             .expect("unlink failed");
 
         assert_eq!(
-            open_file(&root, fio::OpenFlags::RIGHT_READABLE, fio::MODE_TYPE_FILE, "foo")
-                .await
-                .expect_err("Open succeeded")
-                .root_cause()
-                .downcast_ref::<Status>()
-                .expect("No status"),
+            open_file(
+                &root,
+                fio::OpenFlags::RIGHT_READABLE,
+                fio::MODE_TYPE_FILE,
+                "foo"
+            )
+            .await
+            .expect_err("Open succeeded")
+            .root_cause()
+            .downcast_ref::<Status>()
+            .expect("No status"),
             &Status::NOT_FOUND,
         );
 
@@ -1016,7 +1120,9 @@ mod tests {
         .await;
 
         let buf = vec![0xaa as u8; 512];
-        file::write(&file, buf.as_slice()).await.expect("write failed");
+        file::write(&file, buf.as_slice())
+            .await
+            .expect("write failed");
 
         root.unlink("foo", fio::UnlinkOptions::EMPTY)
             .await
@@ -1025,12 +1131,17 @@ mod tests {
 
         // The child should immediately appear unlinked...
         assert_eq!(
-            open_file(&root, fio::OpenFlags::RIGHT_READABLE, fio::MODE_TYPE_FILE, "foo")
-                .await
-                .expect_err("Open succeeded")
-                .root_cause()
-                .downcast_ref::<Status>()
-                .expect("No status"),
+            open_file(
+                &root,
+                fio::OpenFlags::RIGHT_READABLE,
+                fio::MODE_TYPE_FILE,
+                "foo"
+            )
+            .await
+            .expect_err("Open succeeded")
+            .root_cause()
+            .downcast_ref::<Status>()
+            .expect("No status"),
             &Status::NOT_FOUND,
         );
 
@@ -1299,7 +1410,10 @@ mod tests {
         let readdir = |dir: Arc<fio::DirectoryProxy>| async move {
             let status = dir.rewind().await.expect("FIDL call failed");
             Status::ok(status).expect("rewind failed");
-            let (status, buf) = dir.read_dirents(fio::MAX_BUF).await.expect("FIDL call failed");
+            let (status, buf) = dir
+                .read_dirents(fio::MAX_BUF)
+                .await
+                .expect("FIDL call failed");
             Status::ok(status).expect("read_dirents failed");
             let mut entries = vec![];
             for res in fuchsia_fs::directory::parse_dir_entries(&buf) {
@@ -1308,21 +1422,27 @@ mod tests {
             entries
         };
 
-        let mut expected_entries =
-            vec![DirEntry { name: ".".to_owned(), kind: DirentKind::Directory }];
-        expected_entries.extend(
-            files.iter().map(|&name| DirEntry { name: name.to_owned(), kind: DirentKind::File }),
-        );
-        expected_entries.extend(
-            dirs.iter()
-                .map(|&name| DirEntry { name: name.to_owned(), kind: DirentKind::Directory }),
-        );
+        let mut expected_entries = vec![DirEntry {
+            name: ".".to_owned(),
+            kind: DirentKind::Directory,
+        }];
+        expected_entries.extend(files.iter().map(|&name| DirEntry {
+            name: name.to_owned(),
+            kind: DirentKind::File,
+        }));
+        expected_entries.extend(dirs.iter().map(|&name| DirEntry {
+            name: name.to_owned(),
+            kind: DirentKind::Directory,
+        }));
         expected_entries.sort_unstable();
         assert_eq!(expected_entries, readdir(Arc::clone(&parent)).await);
 
         // Remove an entry.
         parent
-            .unlink(&expected_entries.pop().unwrap().name, fio::UnlinkOptions::EMPTY)
+            .unlink(
+                &expected_entries.pop().unwrap().name,
+                fio::UnlinkOptions::EMPTY,
+            )
             .await
             .expect("FIDL call failed")
             .expect("unlink failed");
@@ -1368,21 +1488,39 @@ mod tests {
         };
 
         let expected_entries = vec![
-            DirEntry { name: ".".to_owned(), kind: DirentKind::Directory },
-            DirEntry { name: "a".to_owned(), kind: DirentKind::File },
+            DirEntry {
+                name: ".".to_owned(),
+                kind: DirentKind::Directory,
+            },
+            DirEntry {
+                name: "a".to_owned(),
+                kind: DirentKind::File,
+            },
         ];
-        let (status, buf) = parent.read_dirents(2 * BUFFER_SIZE).await.expect("FIDL call failed");
+        let (status, buf) = parent
+            .read_dirents(2 * BUFFER_SIZE)
+            .await
+            .expect("FIDL call failed");
         Status::ok(status).expect("read_dirents failed");
         assert_eq!(expected_entries, parse_entries(&buf));
 
-        let expected_entries = vec![DirEntry { name: "b".to_owned(), kind: DirentKind::File }];
-        let (status, buf) = parent.read_dirents(2 * BUFFER_SIZE).await.expect("FIDL call failed");
+        let expected_entries = vec![DirEntry {
+            name: "b".to_owned(),
+            kind: DirentKind::File,
+        }];
+        let (status, buf) = parent
+            .read_dirents(2 * BUFFER_SIZE)
+            .await
+            .expect("FIDL call failed");
         Status::ok(status).expect("read_dirents failed");
         assert_eq!(expected_entries, parse_entries(&buf));
 
         // Subsequent calls yield nothing.
         let expected_entries: Vec<DirEntry> = vec![];
-        let (status, buf) = parent.read_dirents(2 * BUFFER_SIZE).await.expect("FIDL call failed");
+        let (status, buf) = parent
+            .read_dirents(2 * BUFFER_SIZE)
+            .await
+            .expect("FIDL call failed");
         Status::ok(status).expect("read_dirents failed");
         assert_eq!(expected_entries, parse_entries(&buf));
 

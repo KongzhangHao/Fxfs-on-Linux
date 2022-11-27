@@ -36,17 +36,23 @@ impl Crypt for RemoteCrypt {
         owner: u64,
         purpose: KeyPurpose,
     ) -> Result<(WrappedKey, UnwrappedKey), Error> {
-        let (wrapping_key_id, key, unwrapped_key) =
-            self.client.create_key(owner, purpose.into()).await?.map_err(|e| anyhow!(e))?;
+        let (wrapping_key_id, key, unwrapped_key) = self
+            .client
+            .create_key(owner, purpose.into())
+            .await?
+            .map_err(|e| anyhow!(e))?;
         Ok((
             WrappedKey {
                 wrapping_key_id,
                 key: WrappedKeyBytes(
-                    key.try_into().map_err(|_| anyhow!("Unexpected wrapped key length"))?,
+                    key.try_into()
+                        .map_err(|_| anyhow!("Unexpected wrapped key length"))?,
                 ),
             },
             UnwrappedKey::new(
-                unwrapped_key.try_into().map_err(|_| anyhow!("Unexpected unwrapped key length"))?,
+                unwrapped_key
+                    .try_into()
+                    .map_err(|_| anyhow!("Unexpected unwrapped key length"))?,
             ),
         ))
     }

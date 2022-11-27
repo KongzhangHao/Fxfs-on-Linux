@@ -82,7 +82,10 @@ struct InspectedFxFilesystem(OpenFxFilesystem, /*fs_id=*/ u64);
 
 impl From<OpenFxFilesystem> for InspectedFxFilesystem {
     fn from(fs: OpenFxFilesystem) -> Self {
-        Self(fs, zx::Event::create().unwrap().get_koid().unwrap().raw_koid())
+        Self(
+            fs,
+            zx::Event::create().unwrap().get_koid().unwrap().raw_koid(),
+        )
     }
 }
 
@@ -178,7 +181,9 @@ impl Component {
             .expect("unable to create diagnostics dir");
 
         let svc_dir = vfs::directory::immutable::simple();
-        self.outgoing_dir.add_entry("svc", svc_dir.clone()).expect("Unable to create svc dir");
+        self.outgoing_dir
+            .add_entry("svc", svc_dir.clone())
+            .expect("Unable to create svc dir");
         let weak = Arc::downgrade(&self);
         svc_dir.add_entry(
             StartupMarker::PROTOCOL_NAME,
@@ -242,19 +247,27 @@ impl Component {
     async fn handle_startup_requests(&self, mut stream: StartupRequestStream) -> Result<(), Error> {
         while let Some(request) = stream.try_next().await? {
             match request {
-                StartupRequest::Start { responder, device, options } => {
+                StartupRequest::Start {
+                    responder,
+                    device,
+                    options,
+                } => {
                     responder.send(&mut self.handle_start(device, options).await.map_err(|e| {
                         error!(?e, "handle_start failed");
                         map_to_raw_status(e)
                     }))?
                 }
-                StartupRequest::Format { responder, device, .. } => {
-                    responder.send(&mut self.handle_format(device).await.map_err(|e| {
-                        error!(?e, "handle_format failed");
-                        map_to_raw_status(e)
-                    }))?
-                }
-                StartupRequest::Check { responder, device, options } => {
+                StartupRequest::Format {
+                    responder, device, ..
+                } => responder.send(&mut self.handle_format(device).await.map_err(|e| {
+                    error!(?e, "handle_format failed");
+                    map_to_raw_status(e)
+                }))?,
+                StartupRequest::Check {
+                    responder,
+                    device,
+                    options,
+                } => {
                     responder.send(&mut self.handle_check(device, options).await.map_err(|e| {
                         error!(?e, "handle_check failed");
                         map_to_raw_status(e)
@@ -293,8 +306,10 @@ impl Component {
         let root_volume = root_volume(fs.clone()).await?;
         let fs: Arc<InspectedFxFilesystem> = Arc::new(fs.into());
         let weak_fs = Arc::downgrade(&fs) as Weak<dyn FsInspect + Send + Sync>;
-        let inspect_tree =
-            Arc::new(FsInspectTree::new(weak_fs, &crate::metrics::FXFS_ROOT_NODE.lock().unwrap()));
+        let inspect_tree = Arc::new(FsInspectTree::new(
+            weak_fs,
+            &crate::metrics::FXFS_ROOT_NODE.lock().unwrap(),
+        ));
         let mem_monitor = match MemoryPressureMonitor::start().await {
             Ok(v) => Some(v),
             Err(e) => {
@@ -316,10 +331,16 @@ impl Component {
             /* overwrite: */ true,
         )?;
 
-        fs.allocator().track_statistics(&*DETAIL_NODE.lock().unwrap(), "allocator");
-        fs.root_store().track_statistics(&*OBJECT_STORES_NODE.lock().unwrap(), "__root");
+        fs.allocator()
+            .track_statistics(&*DETAIL_NODE.lock().unwrap(), "allocator");
+        fs.root_store()
+            .track_statistics(&*OBJECT_STORES_NODE.lock().unwrap(), "__root");
 
-        *state = State::Running(RunningState { fs, volumes, _inspect_tree: inspect_tree });
+        *state = State::Running(RunningState {
+            fs,
+            volumes,
+            _inspect_tree: inspect_tree,
+        });
         info!("Mounted");
         Ok(())
     }
@@ -398,12 +419,20 @@ impl Component {
             if let State::Running(RunningState { ref volumes, .. }) = &*self.state.lock().await {
                 volumes.clone()
             } else {
-                let _ = stream.into_inner().0.shutdown_with_epitaph(zx::Status::BAD_STATE);
+                let _ = stream
+                    .into_inner()
+                    .0
+                    .shutdown_with_epitaph(zx::Status::BAD_STATE);
                 return;
             };
         while let Ok(Some(request)) = stream.try_next().await {
             match request {
-                VolumesRequest::Create { name, crypt, outgoing_directory, responder } => {
+                VolumesRequest::Create {
+                    name,
+                    crypt,
+                    outgoing_directory,
+                    responder,
+                } => {
                     info!(
                         name = name.as_str(),
                         "Create {}volume",
@@ -421,15 +450,26 @@ impl Component {
                                 .map_err(map_to_raw_status),
                         )
                         .unwrap_or_else(|e| {
-                            warn!(error = e.as_value(), "Failed to send volume creation response")
+                            warn!(
+                                error = e.as_value(),
+                                "Failed to send volume creation response"
+                            )
                         });
                 }
                 VolumesRequest::Remove { name, responder } => {
                     info!(name = name.as_str(), "Remove volume");
                     responder
-                        .send(&mut volumes.remove_volume(&name).await.map_err(map_to_raw_status))
+                        .send(
+                            &mut volumes
+                                .remove_volume(&name)
+                                .await
+                                .map_err(map_to_raw_status),
+                        )
                         .unwrap_or_else(|e| {
-                            warn!(error = e.as_value(), "Failed to send volume removal response")
+                            warn!(
+                                error = e.as_value(),
+                                "Failed to send volume removal response"
+                            )
                         });
                 }
             }
@@ -483,8 +523,9 @@ mod tests {
         wait_for_device("/dev/sys/platform/00:00:2d/ramctl", WAIT_TIMEOUT)
             .expect("ramctl did not appear");
 
-        let ramdisk =
-            RamdiskClientBuilder::new(512, 16384).build().expect("Failed to build ramdisk");
+        let ramdisk = RamdiskClientBuilder::new(512, 16384)
+            .build()
+            .expect("Failed to build ramdisk");
 
         {
             let fs = FxFilesystem::new_empty(DeviceHolder::new(
@@ -502,8 +543,13 @@ mod tests {
             .await
             .expect("FxFilesystem::new_empty failed");
             {
-                let root_volume = root_volume(fs.clone()).await.expect("Open root_volume failed");
-                root_volume.new_volume("default", None).await.expect("Create volume failed");
+                let root_volume = root_volume(fs.clone())
+                    .await
+                    .expect("Open root_volume failed");
+                root_volume
+                    .new_volume("default", None)
+                    .await
+                    .expect("Create volume failed");
             }
             fs.close().await.expect("close failed");
         }
@@ -517,7 +563,10 @@ mod tests {
         let mut component_task = Box::pin(
             async {
                 Component::new()
-                    .run(server_end.into_channel(), Some(lifecycle_server.into_channel()))
+                    .run(
+                        server_end.into_channel(),
+                        Some(lifecycle_server.into_channel()),
+                    )
                     .await
                     .expect("Failed to run component");
             }
@@ -571,7 +620,9 @@ mod tests {
             lifecycle_client.stop().expect("Stop failed");
             async move {
                 fasync::OnSignals::new(
-                    &lifecycle_client.into_channel().expect("into_channel failed"),
+                    &lifecycle_client
+                        .into_channel()
+                        .expect("into_channel failed"),
                     zx::Signals::CHANNEL_PEER_CLOSED,
                 )
                 .await
@@ -611,7 +662,10 @@ mod tests {
 
                 let volume_admin_proxy = connect_to_protocol_at_dir_svc::<AdminMarker>(&dir_proxy)
                     .expect("Unable to connect to Admin protocol");
-                volume_admin_proxy.shutdown().await.expect("shutdown failed");
+                volume_admin_proxy
+                    .shutdown()
+                    .await
+                    .expect("shutdown failed");
 
                 // Creating another volume with the same name should fail.
                 let (_dir_proxy, server_end) =
@@ -623,7 +677,11 @@ mod tests {
                     .expect("fidl failed")
                     .expect_err("create succeeded");
 
-                volumes_proxy.remove("test").await.expect("fidl failed").expect("remove failed");
+                volumes_proxy
+                    .remove("test")
+                    .await
+                    .expect("fidl failed")
+                    .expect("remove failed");
 
                 // Removing a non-existent volume should fail.
                 volumes_proxy

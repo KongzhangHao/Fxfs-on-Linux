@@ -89,7 +89,10 @@ impl VolumesDirectory {
         });
         let mut iter = me.root_volume.volume_directory().iter(&mut merger).await?;
         while let Some((name, store_id, object_descriptor)) = iter.get() {
-            ensure!(*object_descriptor == ObjectDescriptor::Volume, FxfsError::Inconsistent);
+            ensure!(
+                *object_descriptor == ObjectDescriptor::Volume,
+                FxfsError::Inconsistent
+            );
 
             me.add_directory_entry(&name, store_id);
 
@@ -116,8 +119,9 @@ impl VolumesDirectory {
                     let name = name_owned.clone();
                     async move {
                         if let Some(me) = weak.upgrade() {
-                            let _ =
-                                me.handle_volume_requests(name.as_ref(), requests, store_id).await;
+                            let _ = me
+                                .handle_volume_requests(name.as_ref(), requests, store_id)
+                                .await;
                         }
                     }
                 }),
@@ -170,10 +174,15 @@ impl VolumesDirectory {
             .await;
         let store = self.root_volume.volume(name, crypt).await?;
         ensure!(
-            !self.mounted_volumes.lock().await.contains_key(&store.store_object_id()),
+            !self
+                .mounted_volumes
+                .lock()
+                .await
+                .contains_key(&store.store_object_id()),
             FxfsError::AlreadyBound
         );
-        self.mount_store(name, store, FlushTaskConfig::default()).await
+        self.mount_store(name, store, FlushTaskConfig::default())
+            .await
     }
 
     // Mounts the given store.  A lock *must* be held on the volume directory.
@@ -192,8 +201,13 @@ impl VolumesDirectory {
             unique_id.get_koid().unwrap().raw_koid(),
         )
         .await?;
-        volume.volume().start_flush_task(flush_task_config, self.mem_monitor.as_ref());
-        self.mounted_volumes.lock().await.insert(store_id, volume.clone());
+        volume
+            .volume()
+            .start_flush_task(flush_task_config, self.mem_monitor.as_ref());
+        self.mounted_volumes
+            .lock()
+            .await
+            .insert(store_id, volume.clone());
         if let Some(inspect) = self.inspect_tree.upgrade() {
             inspect.register_volume(
                 name.to_string(),
@@ -233,7 +247,9 @@ impl VolumesDirectory {
         }
         self.root_volume.delete_volume(name).await?;
         // This shouldn't fail because the entry should exist.
-        self.directory_node.remove_entry(name, /* must_be_directory: */ false).unwrap();
+        self.directory_node
+            .remove_entry(name, /* must_be_directory: */ false)
+            .unwrap();
         Ok(())
     }
 
@@ -336,7 +352,8 @@ impl VolumesDirectory {
     ) -> Result<(), Error> {
         let crypt = crypt
             .map(|crypt| Arc::new(RemoteCrypt::new(crypt.into_proxy().unwrap())) as Arc<dyn Crypt>);
-        self.serve_volume(&self.create_volume(&name, crypt).await?, outgoing_directory).await
+        self.serve_volume(&self.create_volume(&name, crypt).await?, outgoing_directory)
+            .await
     }
 
     async fn handle_volume_requests(
@@ -353,7 +370,11 @@ impl VolumesDirectory {
                         map_to_raw_status(e)
                     }),
                 )?,
-                VolumeRequest::Mount { responder, outgoing_directory, options } => responder.send(
+                VolumeRequest::Mount {
+                    responder,
+                    outgoing_directory,
+                    options,
+                } => responder.send(
                     &mut self
                         .handle_mount(name, store_id, outgoing_directory, options)
                         .await
@@ -421,12 +442,15 @@ impl VolumesDirectory {
             }
         }
 
-        self.pager_dirty_bytes_count.fetch_add(num_bytes, Ordering::AcqRel);
+        self.pager_dirty_bytes_count
+            .fetch_add(num_bytes, Ordering::AcqRel);
     }
 
     /// Reports that a certain number of bytes were cleaned in a pager-backed VMO.
     pub fn report_pager_clean(&self, num_bytes: u64) {
-        let prev_dirty = self.pager_dirty_bytes_count.fetch_sub(num_bytes, Ordering::AcqRel);
+        let prev_dirty = self
+            .pager_dirty_bytes_count
+            .fetch_sub(num_bytes, Ordering::AcqRel);
 
         if prev_dirty < num_bytes {
             // An unlikely scenario, but if there was an underflow, reset the pager dirty bytes to
@@ -448,9 +472,9 @@ impl VolumesDirectory {
     ) -> Result<(), Error> {
         let fs = self.root_volume.volume_directory().store().filesystem();
         let crypt = if let Some(crypt) = options.crypt {
-            Some(Arc::new(RemoteCrypt::new(CryptProxy::new(fasync::Channel::from_channel(
-                crypt.into_channel(),
-            )?))) as Arc<dyn Crypt>)
+            Some(Arc::new(RemoteCrypt::new(CryptProxy::new(
+                fasync::Channel::from_channel(crypt.into_channel())?,
+            ))) as Arc<dyn Crypt>)
         } else {
             None
         };
@@ -460,7 +484,9 @@ impl VolumesDirectory {
     async fn handle_set_limit(self: &Arc<Self>, store_id: u64, bytes: u64) -> Result<(), Error> {
         let fs = self.root_volume.volume_directory().store().filesystem();
         let mut transaction = fs.clone().new_transaction(&[], Options::default()).await?;
-        fs.allocator().set_bytes_limit(&mut transaction, store_id, bytes).await?;
+        fs.allocator()
+            .set_bytes_limit(&mut transaction, store_id, bytes)
+            .await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -487,9 +513,9 @@ impl VolumesDirectory {
         );
 
         let crypt = if let Some(crypt) = options.crypt {
-            Some(Arc::new(RemoteCrypt::new(CryptProxy::new(fasync::Channel::from_channel(
-                crypt.into_channel(),
-            )?))) as Arc<dyn Crypt>)
+            Some(Arc::new(RemoteCrypt::new(CryptProxy::new(
+                fasync::Channel::from_channel(crypt.into_channel())?,
+            ))) as Arc<dyn Crypt>)
         } else {
             None
         };
@@ -548,8 +574,12 @@ impl VolumesDirectory {
     // Unmounts the volume identified by `store_id`.  The caller should take locks to avoid races if
     // necessary.
     async fn unmount(&self, store_id: u64) -> Result<(), Error> {
-        let volume =
-            self.mounted_volumes.lock().await.remove(&store_id).ok_or(FxfsError::NotFound)?;
+        let volume = self
+            .mounted_volumes
+            .lock()
+            .await
+            .remove(&store_id)
+            .ok_or(FxfsError::NotFound)?;
         volume.volume().terminate().await;
         Ok(())
     }
@@ -817,7 +847,10 @@ mod tests {
         let readdir = |dir: Arc<fio::DirectoryProxy>| async move {
             let status = dir.rewind().await.expect("FIDL call failed");
             Status::ok(status).expect("rewind failed");
-            let (status, buf) = dir.read_dirents(fio::MAX_BUF).await.expect("FIDL call failed");
+            let (status, buf) = dir
+                .read_dirents(fio::MAX_BUF)
+                .await
+                .expect("FIDL call failed");
             Status::ok(status).expect("read_dirents failed");
             let mut entries = vec![];
             for res in fuchsia_fs::directory::parse_dir_entries(&buf) {
@@ -906,7 +939,10 @@ mod tests {
                 .expect("create encrypted volume failed");
             vol.volume().store().store_object_id()
         };
-        volumes_directory.unmount(store_id).await.expect("unmount failed");
+        volumes_directory
+            .unmount(store_id)
+            .await
+            .expect("unmount failed");
 
         let (volume_proxy, volume_server_end) =
             fidl::endpoints::create_proxy::<VolumeMarker>().expect("Create proxy to succeed");
@@ -928,8 +964,12 @@ mod tests {
         crypt_service
             .add_wrapping_key(1, insecure::METADATA_KEY.to_vec())
             .expect("add_wrapping_key failed");
-        crypt_service.set_active_key(KeyPurpose::Data, 0).expect("set_active_key failed");
-        crypt_service.set_active_key(KeyPurpose::Metadata, 1).expect("set_active_key failed");
+        crypt_service
+            .set_active_key(KeyPurpose::Data, 0)
+            .expect("set_active_key failed");
+        crypt_service
+            .set_active_key(KeyPurpose::Metadata, 1)
+            .expect("set_active_key failed");
         let (client1, stream1) = create_request_stream().expect("create_endpoints failed");
         let (client2, stream2) = create_request_stream().expect("create_endpoints failed");
 
@@ -938,7 +978,10 @@ mod tests {
                 volume_proxy
                     .mount(
                         dir_server_end,
-                        &mut MountOptions { crypt: Some(client1), ..MountOptions::new_empty() },
+                        &mut MountOptions {
+                            crypt: Some(client1),
+                            ..MountOptions::new_empty()
+                        },
                     )
                     .await
                     .expect("mount (fidl) failed")
@@ -1029,7 +1072,10 @@ mod tests {
         let (dir_proxy, dir_server_end) = fidl::endpoints::create_proxy::<fio::DirectoryMarker>()
             .expect("Create proxy to succeed");
 
-        volumes_directory.serve_volume(&vol, dir_server_end).await.expect("serve_volume failed");
+        volumes_directory
+            .serve_volume(&vol, dir_server_end)
+            .await
+            .expect("serve_volume failed");
 
         let admin_proxy = connect_to_protocol_at_dir_svc::<AdminMarker>(&dir_proxy)
             .expect("Unable to connect to admin service");
@@ -1070,14 +1116,22 @@ mod tests {
                 volume_server_end.into_channel().into(),
             );
 
-            volume_proxy.set_limit(BYTES_LIMIT_1).await.unwrap().expect("To set limits");
+            volume_proxy
+                .set_limit(BYTES_LIMIT_1)
+                .await
+                .unwrap()
+                .expect("To set limits");
             {
                 let limits = (filesystem.allocator() as Arc<SimpleAllocator>).owner_byte_limits();
                 assert_eq!(limits.len(), 1);
                 assert_eq!(limits[0].1, BYTES_LIMIT_1);
             }
 
-            volume_proxy.set_limit(BYTES_LIMIT_2).await.unwrap().expect("To set limits");
+            volume_proxy
+                .set_limit(BYTES_LIMIT_2)
+                .await
+                .unwrap()
+                .expect("To set limits");
             {
                 let limits = (filesystem.allocator() as Arc<SimpleAllocator>).owner_byte_limits();
                 assert_eq!(limits.len(), 1);
@@ -1106,7 +1160,10 @@ mod tests {
                 assert_eq!(limits.len(), 1);
                 assert_eq!(limits[0].1, BYTES_LIMIT_2);
             }
-            volumes_directory.remove_volume(VOLUME_NAME).await.expect("Volume deletion failed");
+            volumes_directory
+                .remove_volume(VOLUME_NAME)
+                .await
+                .expect("Volume deletion failed");
             {
                 let limits = (filesystem.allocator() as Arc<SimpleAllocator>).owner_byte_limits();
                 assert_eq!(limits.len(), 0);
@@ -1175,7 +1232,10 @@ mod tests {
                 "foo",
             )
             .await;
-            VolumeInfo { volume_proxy, file_proxy }
+            VolumeInfo {
+                volume_proxy,
+                file_proxy,
+            }
         }
     }
 
@@ -1194,7 +1254,11 @@ mod tests {
         .unwrap();
 
         let vol = VolumeInfo::new(&volumes_directory, "foo").await;
-        vol.volume_proxy.set_limit(BYTES_LIMIT).await.unwrap().expect("To set limits");
+        vol.volume_proxy
+            .set_limit(BYTES_LIMIT)
+            .await
+            .unwrap()
+            .expect("To set limits");
 
         let zeros = vec![0u8; BLOCK_SIZE];
         // First write should succeed.
@@ -1211,7 +1275,12 @@ mod tests {
         );
         // Likely to run out of space before writing the full limit due to overheads.
         for _ in (BLOCK_SIZE..BYTES_LIMIT as usize).step_by(BLOCK_SIZE) {
-            match vol.file_proxy.write(&zeros).await.expect("Failed Write message") {
+            match vol
+                .file_proxy
+                .write(&zeros)
+                .await
+                .expect("Failed Write message")
+            {
                 Err(_) => break,
                 Ok(b) if b < BLOCK_SIZE.try_into().unwrap() => break,
                 _ => (),
@@ -1229,7 +1298,11 @@ mod tests {
         );
 
         // Double the limit and try again. We should have write space again.
-        vol.volume_proxy.set_limit(BYTES_LIMIT * 2).await.unwrap().expect("To set limits");
+        vol.volume_proxy
+            .set_limit(BYTES_LIMIT * 2)
+            .await
+            .unwrap()
+            .expect("To set limits");
         assert_eq!(
             <u64 as TryInto<usize>>::try_into(
                 vol.file_proxy
@@ -1242,7 +1315,11 @@ mod tests {
             BLOCK_SIZE
         );
 
-        vol.file_proxy.close().await.unwrap().expect("Failed to close file");
+        vol.file_proxy
+            .close()
+            .await
+            .unwrap()
+            .expect("Failed to close file");
         volumes_directory.terminate().await;
         std::mem::drop(volumes_directory);
         filesystem.close().await.expect("close filesystem failed");
@@ -1266,8 +1343,16 @@ mod tests {
 
         let a = VolumeInfo::new(&volumes_directory, "foo").await;
         let b = VolumeInfo::new(&volumes_directory, "bar").await;
-        a.volume_proxy.set_limit(BYTES_LIMIT).await.unwrap().expect("To set limits");
-        b.volume_proxy.set_limit(BYTES_LIMIT).await.unwrap().expect("To set limits");
+        a.volume_proxy
+            .set_limit(BYTES_LIMIT)
+            .await
+            .unwrap()
+            .expect("To set limits");
+        b.volume_proxy
+            .set_limit(BYTES_LIMIT)
+            .await
+            .unwrap()
+            .expect("To set limits");
         let mut a_written: u64 = 0;
         let mut b_written: u64 = 0;
 
@@ -1302,7 +1387,12 @@ mod tests {
 
         // Likely to run out of space before writing the full limit due to overheads.
         for _ in (BLOCK_SIZE..BYTES_LIMIT as usize).step_by(BLOCK_SIZE) {
-            match a.file_proxy.write(&zeros).await.expect("Failed Write message") {
+            match a
+                .file_proxy
+                .write(&zeros)
+                .await
+                .expect("Failed Write message")
+            {
                 Err(_) => break,
                 Ok(bytes) => {
                     a_written += bytes;
@@ -1325,7 +1415,12 @@ mod tests {
         // Now write to the second volume. Likely to run out of space before writing the full limit
         // due to overheads.
         for _ in (BLOCK_SIZE..BYTES_LIMIT as usize).step_by(BLOCK_SIZE) {
-            match b.file_proxy.write(&zeros).await.expect("Failed Write message") {
+            match b
+                .file_proxy
+                .write(&zeros)
+                .await
+                .expect("Failed Write message")
+            {
                 Err(_) => break,
                 Ok(bytes) => {
                     b_written += bytes;
@@ -1350,8 +1445,16 @@ mod tests {
         // First volume should have gotten further.
         assert!(BLOCK_SIZE as u64 * BLOCK_COUNT as u64 - BYTES_LIMIT <= a_written);
 
-        a.file_proxy.close().await.unwrap().expect("Failed to close file");
-        b.file_proxy.close().await.unwrap().expect("Failed to close file");
+        a.file_proxy
+            .close()
+            .await
+            .unwrap()
+            .expect("Failed to close file");
+        b.file_proxy
+            .close()
+            .await
+            .unwrap()
+            .expect("Failed to close file");
         volumes_directory.terminate().await;
         std::mem::drop(volumes_directory);
         filesystem.close().await.expect("close filesystem failed");

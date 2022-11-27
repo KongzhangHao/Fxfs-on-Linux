@@ -140,8 +140,9 @@ impl PagerExecutor {
             ));
         });
 
-        let executor_handle =
-            ehandle_rx.await.context("Failed to setup newly created PagerExecutor")?;
+        let executor_handle = ehandle_rx
+            .await
+            .context("Failed to setup newly created PagerExecutor")?;
 
         Ok(Self {
             primary_thread_handle: Some(primary_thread_handle),
@@ -194,7 +195,10 @@ impl PortThread {
             Self::thread_lifecycle(executor, port_clone, inner, terminate_event)
         });
 
-        Ok(Self { terminated_future: Mutex::new(Some(terminated_future)), port })
+        Ok(Self {
+            terminated_future: Mutex::new(Some(terminated_future)),
+            port,
+        })
     }
 
     fn port(&self) -> &zx::Port {
@@ -324,7 +328,11 @@ impl PortThread {
     async fn terminate(&self) {
         // Queue a packet on the port to notify the thread to terminate.
         self.port
-            .queue(&zx::Packet::from_user_packet(0, 0, zx::UserPacket::from_u8_array([0; 32])))
+            .queue(&zx::Packet::from_user_packet(
+                0,
+                0,
+                zx::UserPacket::from_u8_array([0; 32]),
+            ))
             .unwrap();
 
         let fut = self.terminated_future.lock().unwrap().take();
@@ -344,10 +352,16 @@ impl Drop for PortThread {
 impl<T: PagerBackedVmo> Pager<T> {
     pub fn new(executor: Arc<PagerExecutor>) -> Result<Self, Error> {
         let pager = zx::Pager::create(zx::PagerOptions::empty())?;
-        let inner = Arc::new(Mutex::new(Inner { files: HashMap::default() }));
+        let inner = Arc::new(Mutex::new(Inner {
+            files: HashMap::default(),
+        }));
         let port_thread = PortThread::start(executor, inner.clone())?;
 
-        Ok(Pager { pager, inner, port_thread })
+        Ok(Pager {
+            pager,
+            inner,
+            port_thread,
+        })
     }
 
     /// Creates a new VMO to be used with the pager. Page requests will not be serviced until
@@ -364,7 +378,11 @@ impl<T: PagerBackedVmo> Pager<T> {
     /// Registers a file with the pager.
     pub fn register_file(&self, file: &Arc<T>) -> u64 {
         let pager_key = file.pager_key();
-        self.inner.lock().unwrap().files.insert(pager_key, FileHolder::Weak(Arc::downgrade(file)));
+        self.inner
+            .lock()
+            .unwrap()
+            .files
+            .insert(pager_key, FileHolder::Weak(Arc::downgrade(file)));
         pager_key
     }
 
@@ -422,7 +440,10 @@ impl<T: PagerBackedVmo> Pager<T> {
         transfer_vmo: &zx::Vmo,
         transfer_offset: u64,
     ) {
-        if let Err(e) = self.pager.supply_pages(vmo, range, transfer_vmo, transfer_offset) {
+        if let Err(e) = self
+            .pager
+            .supply_pages(vmo, range, transfer_vmo, transfer_offset)
+        {
             error!(error = e.as_value(), "supply_pages failed");
         }
     }
@@ -445,7 +466,10 @@ impl<T: PagerBackedVmo> Pager<T> {
             | zx::Status::PEER_CLOSED => zx::Status::IO,
             _ => zx::Status::BAD_STATE,
         };
-        if let Err(e) = self.pager.op_range(zx::PagerOp::Fail(pager_status), vmo, range) {
+        if let Err(e) = self
+            .pager
+            .op_range(zx::PagerOp::Fail(pager_status), vmo, range)
+        {
             error!(error = e.as_value(), "op_range failed");
         }
     }
@@ -531,7 +555,9 @@ impl<T: PagerBackedVmo> Pager<T> {
         };
         zx::ok(status)?;
         let vmo_stats = unsafe { vmo_stats.assume_init() };
-        Ok(PagerVmoStats { was_vmo_modified: vmo_stats.modified == ZX_PAGER_VMO_STATS_MODIFIED })
+        Ok(PagerVmoStats {
+            was_vmo_modified: vmo_stats.modified == ZX_PAGER_VMO_STATS_MODIFIED,
+        })
     }
 }
 
@@ -617,8 +643,14 @@ mod tests {
 
     impl MockFile {
         fn new(pager: Arc<Pager<Self>>, pager_key: u64) -> Self {
-            let vmo = pager.create_vmo(pager_key, zx::system_get_page_size().into()).unwrap();
-            Self { pager, vmo, pager_key }
+            let vmo = pager
+                .create_vmo(pager_key, zx::system_get_page_size().into())
+                .unwrap();
+            Self {
+                pager,
+                vmo,
+                pager_key,
+            }
         }
     }
 
@@ -690,7 +722,10 @@ mod tests {
             }
 
             async fn page_in(self: &Arc<Self>, range: Range<u64>) {
-                assert_eq!(fasync::EHandle::local().port(), self.expected_ehandle.port());
+                assert_eq!(
+                    fasync::EHandle::local().port(),
+                    self.expected_ehandle.port()
+                );
                 self.was_page_in_checked.store(true, Ordering::Relaxed);
 
                 let aux_vmo = zx::Vmo::create(range.end - range.start).unwrap();
@@ -698,7 +733,10 @@ mod tests {
             }
 
             async fn mark_dirty(self: &Arc<Self>, range: Range<u64>) {
-                assert_eq!(fasync::EHandle::local().port(), self.expected_ehandle.port());
+                assert_eq!(
+                    fasync::EHandle::local().port(),
+                    self.expected_ehandle.port()
+                );
                 self.was_mark_dirty_checked.store(true, Ordering::Relaxed);
 
                 self.pager.dirty_pages(&self.vmo, range);
@@ -712,7 +750,9 @@ mod tests {
         let expected_ehandle = pager_executor.executor_handle().clone();
         let pager = Arc::new(Pager::<ExecutorValidatingFile>::new(pager_executor).unwrap());
         let file = Arc::new(ExecutorValidatingFile {
-            vmo: pager.create_vmo(PAGER_KEY, zx::system_get_page_size().into()).unwrap(),
+            vmo: pager
+                .create_vmo(PAGER_KEY, zx::system_get_page_size().into())
+                .unwrap(),
             pager_key: PAGER_KEY,
             pager: pager.clone(),
             expected_ehandle,
@@ -736,8 +776,14 @@ mod tests {
 
     impl OnZeroChildrenFile {
         fn new(pager: &Pager<Self>, pager_key: u64, sender: mpsc::UnboundedSender<()>) -> Self {
-            let vmo = pager.create_vmo(pager_key, zx::system_get_page_size().into()).unwrap();
-            Self { vmo, pager_key, sender: Mutex::new(sender) }
+            let vmo = pager
+                .create_vmo(pager_key, zx::system_get_page_size().into())
+                .unwrap();
+            Self {
+                vmo,
+                pager_key,
+                sender: Mutex::new(sender),
+            }
         }
     }
 
@@ -840,7 +886,8 @@ mod tests {
             }
 
             async fn page_in(self: &Arc<Self>, range: Range<u64>) {
-                self.pager.report_failure(&self.vmo, range, *self.status_code.lock().unwrap())
+                self.pager
+                    .report_failure(&self.vmo, range, *self.status_code.lock().unwrap())
             }
 
             async fn mark_dirty(self: &Arc<Self>, _range: Range<u64>) {
@@ -856,7 +903,9 @@ mod tests {
         let pager_executor = Arc::new(PagerExecutor::start().await.unwrap());
         let pager = Arc::new(Pager::<StatusCodeFile>::new(pager_executor).unwrap());
         let file = Arc::new(StatusCodeFile {
-            vmo: pager.create_vmo(PAGER_KEY, zx::system_get_page_size().into()).unwrap(),
+            vmo: pager
+                .create_vmo(PAGER_KEY, zx::system_get_page_size().into())
+                .unwrap(),
             pager_key: PAGER_KEY,
             pager: pager.clone(),
             status_code: Mutex::new(zx::Status::INTERNAL),
@@ -874,7 +923,11 @@ mod tests {
             let mut buf = [0u8; 8];
             assert_eq!(file.vmo().read(&mut buf, 0).unwrap_err(), expected_code);
         }
-        check_mapping(&file, zx::Status::IO_DATA_INTEGRITY, zx::Status::IO_DATA_INTEGRITY);
+        check_mapping(
+            &file,
+            zx::Status::IO_DATA_INTEGRITY,
+            zx::Status::IO_DATA_INTEGRITY,
+        );
         check_mapping(&file, zx::Status::NO_SPACE, zx::Status::NO_SPACE);
         check_mapping(&file, zx::Status::FILE_BIG, zx::Status::BUFFER_TOO_SMALL);
         check_mapping(&file, zx::Status::IO, zx::Status::IO);
@@ -893,21 +946,28 @@ mod tests {
         let file = Arc::new(MockFile::new(pager.clone(), 1234));
         assert_eq!(pager.register_file(&file), file.pager_key());
 
-        let stats = pager.query_vmo_stats(file.vmo(), PagerVmoStatsOptions::empty()).unwrap();
+        let stats = pager
+            .query_vmo_stats(file.vmo(), PagerVmoStatsOptions::empty())
+            .unwrap();
         // The VMO hasn't been modified yet.
         assert!(!stats.was_vmo_modified());
 
         file.vmo().write(&mut [0, 1, 2, 3, 4], 0).unwrap();
-        let stats = pager.query_vmo_stats(file.vmo(), PagerVmoStatsOptions::empty()).unwrap();
+        let stats = pager
+            .query_vmo_stats(file.vmo(), PagerVmoStatsOptions::empty())
+            .unwrap();
         assert!(stats.was_vmo_modified());
 
         // Reset the stats this time.
-        let stats =
-            pager.query_vmo_stats(file.vmo(), PagerVmoStatsOptions::RESET_VMO_STATS).unwrap();
+        let stats = pager
+            .query_vmo_stats(file.vmo(), PagerVmoStatsOptions::RESET_VMO_STATS)
+            .unwrap();
         // The stats weren't reset last time so the stats are still showing that the vmo is modified.
         assert!(stats.was_vmo_modified());
 
-        let stats = pager.query_vmo_stats(file.vmo(), PagerVmoStatsOptions::empty()).unwrap();
+        let stats = pager
+            .query_vmo_stats(file.vmo(), PagerVmoStatsOptions::empty())
+            .unwrap();
         assert!(!stats.was_vmo_modified());
 
         pager.unregister_file(file.as_ref());
@@ -929,8 +989,9 @@ mod tests {
         file.vmo().write(&[1, 2, 3, 4], page_size * 4).unwrap();
 
         let mut buffer = vec![VmoDirtyRange::default(); 3];
-        let (actual, remaining) =
-            pager.query_dirty_ranges(file.vmo(), 0..page_size * 7, &mut buffer).unwrap();
+        let (actual, remaining) = pager
+            .query_dirty_ranges(file.vmo(), 0..page_size * 7, &mut buffer)
+            .unwrap();
         assert_eq!(actual, 3);
         assert_eq!(remaining, 1);
         assert_eq!(buffer[0].range(), page_size..(page_size * 3));

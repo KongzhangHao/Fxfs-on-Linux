@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-pub mod fuse_handler;
-pub mod errors;
-pub mod mem_fs;
 mod attr;
+pub mod errors;
 pub mod fuse_fs;
+pub mod fuse_handler;
+pub mod mem_fs;

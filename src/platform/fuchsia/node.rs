@@ -60,7 +60,12 @@ impl PlaceholderOwner<'_> {
         let this_object_id = self.inner.object_id();
         assert_eq!(node.object_id(), this_object_id);
         self.committed = true;
-        self.cache.0.lock().unwrap().map.insert(this_object_id, Arc::downgrade(node));
+        self.cache
+            .0
+            .lock()
+            .unwrap()
+            .map
+            .insert(this_object_id, Arc::downgrade(node));
     }
 }
 
@@ -107,7 +112,9 @@ impl<'a> Iterator for FileIter<'a> {
             Some(oid) => cache.map.range(oid + 1..),
         };
         for (object_id, file) in range {
-            if let Some(file) = file.upgrade().and_then(|f| f.into_any().downcast::<FxFile>().ok())
+            if let Some(file) = file
+                .upgrade()
+                .and_then(|f| f.into_any().downcast::<FxFile>().ok())
             {
                 self.object_id = Some(*object_id);
                 return Some(file);
@@ -119,7 +126,10 @@ impl<'a> Iterator for FileIter<'a> {
 
 impl NodeCache {
     pub fn new() -> Self {
-        Self(Mutex::new(NodeCacheInner { map: BTreeMap::new(), next_waker_sequence: 0 }))
+        Self(Mutex::new(NodeCacheInner {
+            map: BTreeMap::new(),
+            next_waker_sequence: 0,
+        }))
     }
 
     /// Gets a node in the cache, or reserves a placeholder in the cache to fill.
@@ -156,7 +166,8 @@ impl NodeCache {
                 waker_sequence: this.next_waker_sequence,
                 wakers: vec![],
             })));
-            this.map.insert(object_id, Arc::downgrade(&inner) as Weak<dyn FxNode>);
+            this.map
+                .insert(object_id, Arc::downgrade(&inner) as Weak<dyn FxNode>);
             Poll::Ready(GetResult::Placeholder(PlaceholderOwner {
                 inner,
                 committed: false,
@@ -188,12 +199,20 @@ impl NodeCache {
 
     /// Returns the given node if present in the cache.
     pub fn get(&self, object_id: u64) -> Option<Arc<dyn FxNode>> {
-        self.0.lock().unwrap().map.get(&object_id).and_then(Weak::upgrade)
+        self.0
+            .lock()
+            .unwrap()
+            .map
+            .get(&object_id)
+            .and_then(Weak::upgrade)
     }
 
     /// Returns an iterator over all files in the cache.
     pub fn files(&self) -> FileIter<'_> {
-        FileIter { cache: self, object_id: None }
+        FileIter {
+            cache: self,
+            object_id: None,
+        }
     }
 }
 
@@ -210,7 +229,10 @@ impl<N: FxNode + ?Sized> OpenedNode<N> {
     pub fn downcast<T: FxNode>(self) -> Result<OpenedNode<T>, Self> {
         if self.is::<T>() {
             Ok(OpenedNode(
-                self.take().into_any().downcast::<T>().unwrap_or_else(|_| unreachable!()),
+                self.take()
+                    .into_any()
+                    .downcast::<T>()
+                    .unwrap_or_else(|_| unreachable!()),
             ))
         } else {
             Err(self)
@@ -386,6 +408,9 @@ mod tests {
         }))
         .await;
         assert_eq!(*writes.lock().unwrap(), vec![1u64; NUM_OBJECTS]);
-        assert_eq!(*reads.lock().unwrap(), vec![TASKS_PER_OBJECT as u64 - 1; NUM_OBJECTS]);
+        assert_eq!(
+            *reads.lock().unwrap(),
+            vec![TASKS_PER_OBJECT as u64 - 1; NUM_OBJECTS]
+        );
     }
 }

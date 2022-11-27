@@ -2,19 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::filesystem::SyncOptions;
-use crate::object_store::transaction::{Options, TransactionHandler};
-use crate::object_store::Directory;
-use crate::platform::linux::errors::cast_to_fuse_error;
-use crate::platform::linux::fuse_fs::FuseFs;
+use crate::filesystem::Filesystem;
+use crate::object_store::ObjectDescriptor;
+use crate::{
+    filesystem::SyncOptions,
+    object_store::{
+        transaction::{Options, TransactionHandler},
+        Directory,
+    },
+    platform::linux::{errors::cast_to_fuse_error, fuse_fs::FuseFs},
+};
 use async_trait::async_trait;
-use fuse3::raw::prelude::Filesystem as FuseFilesystem;
-use fuse3::raw::prelude::*;
-use fuse3::Result;
+use fuse3::{
+    raw::prelude::{Filesystem as FuseFilesystem, *},
+    Result,
+};
 use futures_util::stream::{Empty, Iter};
-use std::ffi::OsStr;
-use std::time::Duration;
-use std::vec::IntoIter;
+use std::{ffi::OsStr, time::Duration, vec::IntoIter};
 use tracing::Level;
 
 const TTL: Duration = Duration::from_secs(1);
@@ -106,8 +110,18 @@ impl FuseFilesystem for FuseFs {
 
         if let Ok(child_dir) = child_dir_result {
             transaction.commit().await.expect("commit failed");
-            fs.sync(SyncOptions::default()).await.expect("sync failed");
-            Err(cast_to_fuse_error(&child_dir_result.err().unwrap()))
+            self.fs
+                .sync(SyncOptions::default())
+                .await
+                .expect("sync failed");
+
+            Ok(ReplyEntry {
+                ttl: TTL,
+                attr: self
+                    .create_object_attr(child_dir.object_id(), ObjectDescriptor::Directory)
+                    .await?,
+                generation: 0,
+            })
         } else {
             Err(cast_to_fuse_error(&child_dir_result.err().unwrap()))
         }

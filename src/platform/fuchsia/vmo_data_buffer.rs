@@ -53,7 +53,9 @@ impl DataBuffer for VmoDataBuffer {
         buf: &mut [u8],
         _source: &dyn ReadObjectHandle,
     ) -> Result<usize, Error> {
-        Ok(self.stream.readv_at(zx::StreamReadOptions::empty(), offset, &[buf])?)
+        Ok(self
+            .stream
+            .readv_at(zx::StreamReadOptions::empty(), offset, &[buf])?)
     }
 
     async fn write(
