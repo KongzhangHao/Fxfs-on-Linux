@@ -3,8 +3,7 @@
 // found in the LICENSE file.
 
 use crate::object_store::Timestamp;
-use fuse3::raw::prelude::FileAttr;
-use fuse3::FileType;
+use fuse3::{raw::prelude::FileAttr, FileType};
 use std::time::SystemTime;
 
 pub fn create_dir_attr(

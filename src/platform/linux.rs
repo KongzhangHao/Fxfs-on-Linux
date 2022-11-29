@@ -6,4 +6,3 @@ mod attr;
 pub mod errors;
 pub mod fuse_fs;
 pub mod fuse_handler;
-pub mod mem_fs;

@@ -2,23 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::filesystem::Filesystem;
-use crate::object_store::ObjectDescriptor;
 use crate::{
-    filesystem::SyncOptions,
+    filesystem::{Filesystem, SyncOptions},
+    object_handle::{ObjectHandle, ObjectHandleExt, ReadObjectHandle, WriteObjectHandle},
     object_store::{
+        directory::{replace_child, ReplacedChild},
         transaction::{Options, TransactionHandler},
-        Directory,
+        Directory, ObjectDescriptor,
     },
-    platform::linux::{errors::cast_to_fuse_error, fuse_fs::FuseFs},
+    platform::linux::{
+        errors::FuseErrorParser,
+        fuse_fs::{FuseFs, FuseStrParser},
+    },
 };
 use async_trait::async_trait;
+use bytes::BytesMut;
 use fuse3::{
     raw::prelude::{Filesystem as FuseFilesystem, *},
     Result,
 };
 use futures_util::stream::{Empty, Iter};
-use std::{ffi::OsStr, time::Duration, vec::IntoIter};
+use std::{ffi::OsStr, io::Write, time::Duration, vec::IntoIter};
 use tracing::Level;
 
 const TTL: Duration = Duration::from_secs(1);
@@ -39,24 +43,18 @@ impl FuseFilesystem for FuseFs {
 
     async fn lookup(&self, _req: Request, parent: u64, name: &OsStr) -> Result<ReplyEntry> {
         let dir = self.open_dir(parent).await?;
-        let lookup_result = dir
-            .lookup(name.to_str().expect("Invalid UniCode file name"))
-            .await;
+        let object = dir.lookup(name.parse_str()?).await.parse_error()?;
 
-        if let Ok(object) = lookup_result {
-            if let Some((object_id, object_descriptor)) = object {
-                Ok(ReplyEntry {
-                    ttl: TTL,
-                    attr: self
-                        .create_object_attr(object_id, object_descriptor)
-                        .await?,
-                    generation: 0,
-                })
-            } else {
-                Err(libc::ENOENT.into())
-            }
+        if let Some((object_id, object_descriptor)) = object {
+            Ok(ReplyEntry {
+                ttl: TTL,
+                attr: self
+                    .create_object_attr(object_id, object_descriptor)
+                    .await?,
+                generation: 0,
+            })
         } else {
-            Err(cast_to_fuse_error(&lookup_result.err().unwrap()))
+            Err(libc::ENOENT.into())
         }
     }
 
@@ -97,23 +95,16 @@ impl FuseFilesystem for FuseFs {
             .clone()
             .new_transaction(&[], Options::default())
             .await
-            .expect("new_transaction failed");
-
+            .parse_error()?;
         let dir = self.open_dir(parent).await?;
-
-        let child_dir_result = dir
-            .create_child_dir(
-                &mut transaction,
-                name.to_str().expect("Invalid UniCode file name"),
-            )
-            .await;
-
-        if let Ok(child_dir) = child_dir_result {
-            transaction.commit().await.expect("commit failed");
-            self.fs
-                .sync(SyncOptions::default())
+        if dir.lookup(name.parse_str()?).await.parse_error()?.is_none() {
+            let child_dir = dir
+                .create_child_dir(&mut transaction, name.parse_str()?)
                 .await
-                .expect("sync failed");
+                .parse_error()?;
+
+            transaction.commit().await.parse_error()?;
+            self.fs.sync(SyncOptions::default()).await.parse_error()?;
 
             Ok(ReplyEntry {
                 ttl: TTL,
@@ -123,16 +114,64 @@ impl FuseFilesystem for FuseFs {
                 generation: 0,
             })
         } else {
-            Err(cast_to_fuse_error(&child_dir_result.err().unwrap()))
+            Err(libc::EEXIST.into())
         }
     }
 
     async fn unlink(&self, _req: Request, parent: u64, name: &OsStr) -> Result<()> {
-        unimplemented!()
+        let dir = self.open_dir(parent).await?;
+        if let Some((_, object_descriptor)) = dir.lookup(name.parse_str()?).await.parse_error()? {
+            if object_descriptor == ObjectDescriptor::File {
+                let mut transaction = self
+                    .fs
+                    .clone()
+                    .new_transaction(&[], Options::default())
+                    .await
+                    .parse_error()?;
+                let replaced_child =
+                    replace_child(&mut transaction, None, (&dir, name.parse_str()?))
+                        .await
+                        .parse_error()?;
+                transaction.commit().await.parse_error()?;
+
+                if let ReplacedChild::File(object_id) = replaced_child {
+                    self.fs
+                        .graveyard()
+                        .tombstone(dir.store().store_object_id(), object_id)
+                        .await
+                        .parse_error()?;
+                }
+                Ok(())
+            } else {
+                Err(libc::EISDIR.into())
+            }
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
+    /// Do nothing if the directory is not empty. Can be changed by recursively deleting all child objects and their successors.
     async fn rmdir(&self, _req: Request, parent: u64, name: &OsStr) -> Result<()> {
-        unimplemented!()
+        let dir = self.open_dir(parent).await?;
+        if let Some((_, object_descriptor)) = dir.lookup(name.parse_str()?).await.parse_error()? {
+            if object_descriptor == ObjectDescriptor::Directory {
+                let mut transaction = self
+                    .fs
+                    .clone()
+                    .new_transaction(&[], Options::default())
+                    .await
+                    .parse_error()?;
+                replace_child(&mut transaction, None, (&dir, name.parse_str()?))
+                    .await
+                    .parse_error()?;
+                transaction.commit().await.parse_error()?;
+                Ok(())
+            } else {
+                Err(libc::ENOTDIR.into())
+            }
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn rename(
@@ -143,11 +182,53 @@ impl FuseFilesystem for FuseFs {
         new_parent: u64,
         new_name: &OsStr,
     ) -> Result<()> {
-        unimplemented!()
+        let old_dir = self.open_dir(parent).await?;
+        let new_dir = self.open_dir(new_parent).await?;
+
+        if old_dir
+            .lookup(name.parse_str()?)
+            .await
+            .parse_error()?
+            .is_some()
+        {
+            let mut transaction = self
+                .fs
+                .clone()
+                .new_transaction(&[], Options::default())
+                .await
+                .parse_error()?;
+            let replaced_child = replace_child(
+                &mut transaction,
+                Some((&old_dir, name.parse_str()?)),
+                (&new_dir, new_name.parse_str()?),
+            )
+            .await
+            .parse_error()?;
+            transaction.commit().await.parse_error()?;
+
+            if let ReplacedChild::File(object_id) = replaced_child {
+                self.fs
+                    .graveyard()
+                    .tombstone(new_dir.store().store_object_id(), object_id)
+                    .await
+                    .parse_error()?;
+            }
+            Ok(())
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn open(&self, _req: Request, inode: u64, _flags: u32) -> Result<ReplyOpen> {
-        unimplemented!()
+        if let Some(object_type) = self.get_object_type(inode).await? {
+            if object_type == ObjectDescriptor::File {
+                Ok(ReplyOpen { fh: 0, flags: 0 })
+            } else {
+                Err(libc::EISDIR.into())
+            }
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn read(
@@ -158,9 +239,39 @@ impl FuseFilesystem for FuseFs {
         offset: u64,
         size: u32,
     ) -> Result<ReplyData> {
-        unimplemented!()
+        if let Some(object_type) = self.get_object_type(inode).await? {
+            if object_type == ObjectDescriptor::File {
+                let handle = self.get_object_handle(inode).await?;
+                let mut out: Vec<u8> = Vec::new();
+                let align = offset % self.fs.block_size();
+
+                let mut buf = handle.allocate_buffer(handle.block_size() as usize);
+                let mut ofs = offset - align;
+                let mut len = size as u64 + align;
+                loop {
+                    let bytes = handle.read(ofs, buf.as_mut()).await.parse_error()?;
+                    if len - ofs > bytes as u64 {
+                        ofs += bytes as u64;
+
+                        out.write_all(&buf.as_ref().as_slice()[..bytes])?;
+                        if bytes as u64 != handle.block_size() {
+                            break;
+                        }
+                    } else {
+                        out.write_all(&buf.as_ref().as_slice()[..(len - ofs) as usize])?;
+                        break;
+                    }
+                }
+                Ok(ReplyData { data: out.into() })
+            } else {
+                Err(libc::EISDIR.into())
+            }
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
+    /// To verify: does the offset automatically round down to the multiply of block size?
     async fn write(
         &self,
         _req: Request,
@@ -170,7 +281,25 @@ impl FuseFilesystem for FuseFs {
         mut data: &[u8],
         _flags: u32,
     ) -> Result<ReplyWrite> {
-        unimplemented!()
+        if let Some(object_type) = self.get_object_type(inode).await? {
+            if object_type == ObjectDescriptor::File {
+                let handle = self.get_object_handle(inode).await?;
+                let mut buf = handle.allocate_buffer(data.len());
+                buf.as_mut_slice().copy_from_slice(data);
+                handle
+                    .write_or_append(Some(offset), buf.as_ref())
+                    .await
+                    .parse_error()?;
+                handle.flush().await.parse_error()?;
+                Ok(ReplyWrite {
+                    written: data.len() as u32,
+                })
+            } else {
+                Err(libc::EISDIR.into())
+            }
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn release(

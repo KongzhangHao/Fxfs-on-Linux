@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use crate::errors::FxfsError;
-use fuse3::Errno;
+use fuse3::{Errno, Result};
 
 pub fn cast_to_fuse_error(err: &anyhow::Error) -> Errno {
     if let Some(root_cause) = err.root_cause().downcast_ref::<FxfsError>() {
@@ -31,5 +31,19 @@ pub fn cast_to_fuse_error(err: &anyhow::Error) -> Errno {
         }
     } else {
         libc::ENOTSUP.into()
+    }
+}
+
+pub trait FuseErrorParser<S> {
+    fn parse_error(self) -> Result<S>;
+}
+
+impl<S> FuseErrorParser<S> for std::result::Result<S, anyhow::Error> {
+    fn parse_error(self) -> Result<S> {
+        if let Ok(ret) = self {
+            Ok(ret)
+        } else {
+            Err(cast_to_fuse_error(&self.err().unwrap()))
+        }
     }
 }
