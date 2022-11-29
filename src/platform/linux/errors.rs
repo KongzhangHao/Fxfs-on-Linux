@@ -26,7 +26,6 @@ pub fn cast_to_fuse_error(err: &anyhow::Error) -> Errno {
             FxfsError::AccessDenied => libc::ELIBACC.into(),
             FxfsError::OutOfRange => libc::ERANGE.into(),
             FxfsError::AlreadyBound => libc::EALREADY.into(),
-
             _ => libc::ENOTSUP.into(),
         }
     } else {

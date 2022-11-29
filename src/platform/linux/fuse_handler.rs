@@ -58,30 +58,6 @@ impl FuseFilesystem for FuseFs {
         }
     }
 
-    async fn forget(&self, _req: Request, _inode: u64, _nlookup: u64) {
-        unimplemented!()
-    }
-
-    async fn getattr(
-        &self,
-        _req: Request,
-        inode: u64,
-        _fh: Option<u64>,
-        _flags: u32,
-    ) -> Result<ReplyAttr> {
-        unimplemented!()
-    }
-
-    async fn setattr(
-        &self,
-        _req: Request,
-        inode: u64,
-        _fh: Option<u64>,
-        set_attr: SetAttr,
-    ) -> Result<ReplyAttr> {
-        unimplemented!()
-    }
-
     async fn mkdir(
         &self,
         _req: Request,
@@ -90,14 +66,15 @@ impl FuseFilesystem for FuseFs {
         mode: u32,
         _umask: u32,
     ) -> Result<ReplyEntry> {
-        let mut transaction = self
-            .fs
-            .clone()
-            .new_transaction(&[], Options::default())
-            .await
-            .parse_error()?;
         let dir = self.open_dir(parent).await?;
         if dir.lookup(name.parse_str()?).await.parse_error()?.is_none() {
+            let mut transaction = self
+                .fs
+                .clone()
+                .new_transaction(&[], Options::default())
+                .await
+                .parse_error()?;
+
             let child_dir = dir
                 .create_child_dir(&mut transaction, name.parse_str()?)
                 .await
@@ -150,7 +127,7 @@ impl FuseFilesystem for FuseFs {
         }
     }
 
-    /// Do nothing if the directory is not empty. Can be changed by recursively deleting all child objects and their successors.
+    /// Do nothing if the directory is not empty.
     async fn rmdir(&self, _req: Request, parent: u64, name: &OsStr) -> Result<()> {
         let dir = self.open_dir(parent).await?;
         if let Some((_, object_descriptor)) = dir.lookup(name.parse_str()?).await.parse_error()? {
@@ -252,7 +229,6 @@ impl FuseFilesystem for FuseFs {
                     let bytes = handle.read(ofs, buf.as_mut()).await.parse_error()?;
                     if len - ofs > bytes as u64 {
                         ofs += bytes as u64;
-
                         out.write_all(&buf.as_ref().as_slice()[..bytes])?;
                         if bytes as u64 != handle.block_size() {
                             break;
@@ -271,7 +247,7 @@ impl FuseFilesystem for FuseFs {
         }
     }
 
-    /// To verify: does the offset automatically round down to the multiply of block size?
+    /// Does the offset automatically round down to the multiply of block size?
     async fn write(
         &self,
         _req: Request,
@@ -311,6 +287,30 @@ impl FuseFilesystem for FuseFs {
         _lock_owner: u64,
         _flush: bool,
     ) -> Result<()> {
+        unimplemented!()
+    }
+
+    async fn forget(&self, _req: Request, _inode: u64, _nlookup: u64) {
+        unimplemented!()
+    }
+
+    async fn getattr(
+        &self,
+        _req: Request,
+        inode: u64,
+        _fh: Option<u64>,
+        _flags: u32,
+    ) -> Result<ReplyAttr> {
+        unimplemented!()
+    }
+
+    async fn setattr(
+        &self,
+        _req: Request,
+        inode: u64,
+        _fh: Option<u64>,
+        set_attr: SetAttr,
+    ) -> Result<ReplyAttr> {
         unimplemented!()
     }
 

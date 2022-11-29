@@ -1,9 +1,13 @@
-use crate::object_store::{ObjectKey, ObjectKind, ObjectValue};
+// Copyright 2021 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 use crate::{
     crypt::Crypt,
     filesystem::{FxFilesystem, OpenFxFilesystem},
     object_handle::{GetProperties, ObjectProperties},
     object_store::{
+        ObjectKey, ObjectKind, ObjectValue,
         transaction::Transaction, volume::root_volume, Directory, HandleOptions, ObjectDescriptor,
         ObjectStore, StoreObjectHandle,
     },
@@ -13,12 +17,12 @@ use crate::{
     },
 };
 use fuse3::{raw::prelude::*, Result};
-use std::error::Error;
-use std::ffi::OsStr;
 use std::{
     fmt::{Debug, Formatter},
     sync::Arc,
     time::Duration,
+    ffi::OsStr,
+    error::Error
 };
 use storage_device::{fake_device::FakeDevice, DeviceHolder};
 use tokio::sync::RwLock;
