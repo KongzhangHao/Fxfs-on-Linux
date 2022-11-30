@@ -1,0 +1,239 @@
+# Copyright 2022 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# source GN: //src/storage/fxfs:lib.actual"
+
+[package]
+name = "fxfs"
+version = "0.0.1"
+license = "BSD-3-Clause"
+authors = ["rust-fuchsia@fuchsia.com"]
+description = "Rust crate for Fuchsia OS"
+repository = "https://fuchsia.googlesource.com"
+edition = "2021"
+
+
+
+[lib]
+
+name = "fxfs"
+path = "/home/hao/fxfs/src/lib.rs"
+# Note: disabling tests because test deps are not included in the build: ['//src/lib/storage/ramdevice_client/rust:ramdevice_client']
+test = false
+[workspace]
+# empty workspace table excludes this crate from thinking it should be in a workspace
+
+[patch.crates-io]
+fuchsia-cprng = { path = "/home/hao/fuchsia/third_party/rust_crates/../../src/lib/zircon/rust/fuchsia-cprng" }
+aho-corasick = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/aho-corasick" }
+byteorder = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/byteorder" }
+csv = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/csv" }
+csv-core = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/csv-core" }
+memchr = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/memchr" }
+regex-automata = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/regex-automata" }
+same-file = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/same-file" }
+streaming-stats = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/streaming-stats" }
+termcolor = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/termcolor" }
+walkdir = { path = "/home/hao/fuchsia/third_party/rust_crates/ask2patch/walkdir" }
+backtrace-sys = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/backtrace-sys" }
+crossterm_winapi = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/crossterm_winapi" }
+ctor = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/ctor" }
+miow = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/miow" }
+ntapi = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/ntapi" }
+output_vt100 = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/output_vt100" }
+wasi = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/wasi" }
+wasi-0_10_1 = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/wasi-0.10.1", package = "wasi" }
+web-sys = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/web-sys" }
+wepoll-sys = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/wepoll-sys" }
+winapi = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/winapi" }
+winapi-util = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/winapi-util" }
+windows-sys = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/windows-sys" }
+windows_aarch64_msvc = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/windows_aarch64_msvc" }
+windows_i686_gnu = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/windows_i686_gnu" }
+windows_i686_msvc = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/windows_i686_msvc" }
+windows_x86_64_gnu = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/windows_x86_64_gnu" }
+windows_x86_64_msvc = { path = "/home/hao/fuchsia/third_party/rust_crates/empty/windows_x86_64_msvc" }
+fatfs = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/fatfs" }
+hound = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/hound" }
+libm = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/libm" }
+pulldown-cmark = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/pulldown-cmark" }
+rustls = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/rustls" }
+security-framework = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/security-framework" }
+tracing-core = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/tracing-core" }
+type_hash_core = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/type_hash/core" }
+type_hash_macros = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/type_hash/macros" }
+type_hash = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/type_hash/type_hash" }
+zeroize = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/zeroize" }
+zstd-sys = { path = "/home/hao/fuchsia/third_party/rust_crates/forks/zstd-sys" }
+serde_json5 = { path = "/home/hao/fuchsia/third_party/rust_crates/mirrors/serde_json5" }
+
+#[dependencies.backtrace_request]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/46c9f824c4f9a0291fbc833c3773577bd5c21d0d"
+
+[dependencies]
+futures-lite = "1.11.3"
+easy-parallel = "3.1.0"
+async-io = "1.4.1"
+async-net = "1.6.0"
+async-executor = "1.4.1"
+blocking = "1.0.2"
+async-channel = "1.6.1"
+# For FUSE
+fuse3 = { version = "0.5.1", features = ["tokio-runtime", "unprivileged"] }
+libc = "0.2.116"
+tokio = { version = "1.19.2", features = ["macros", "rt", "time"] }
+futures-util = "0.3.19"
+mio = { version = "0.8", features = ["os-poll"] }
+tempfile = "3"
+bytes = "1.0.1"
+tracing-subscriber = "0.3"
+aes-gcm-siv = "0.10.3"
+
+[dependencies."xts-mode"]
+version = "0.4.1"
+[dependencies."uuid"]
+version = "1.1.2"
+features = ["serde", "v4"]
+[dependencies."type_hash"]
+version = "0.3.0"
+features = []
+[dependencies."tracing"]
+version = "0.1.34"
+features = ["log"]
+optional = true
+[dependencies."thiserror"]
+version = "1.0.23"
+[dependencies."static_assertions"]
+version = "1.1.0"
+[dependencies."slab"]
+version = "0.4.2"
+[dependencies."serde"]
+version = "1.0.147"
+features = ["derive"]
+[dependencies."scopeguard"]
+version = "1.1.0"
+[dependencies."rand"]
+version = "0.8.4"
+features = ["small_rng"]
+[dependencies."pin-project"]
+version = "1.0.11"
+[dependencies."once_cell"]
+version = "1.5.2"
+features = ["parking_lot"]
+[dependencies."futures"]
+version = "0.3.19"
+[dependencies."event-listener"]
+version = "2.5.1"
+[dependencies."either"]
+version = "1.8.0"
+[dependencies."chacha20"]
+version = "0.8.1"
+[dependencies."byteorder"]
+version = "1.3.1"
+features = ["i128"]
+[dependencies."bitflags"]
+version = "1.3.2"
+[dependencies."bincode"]
+version = "1.3.3"
+[dependencies."async-trait"]
+version = "0.1.56"
+[dependencies."assert_matches"]
+version = "1.5.0"
+[dependencies."anyhow"]
+version = "1.0.57"
+[dependencies."aes"]
+version = "0.7.5"
+features = ["armv8"]
+[dependencies.interval_tree]
+version = "0.0.1"
+path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/23212135f49a8608f3d35af4db8ede9941f51406"
+
+[dependencies.fxfs_macros]
+version = "0.0.2"
+path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/58019ea167448bc8fa722c2aa2db50baf820d03b"
+
+#[dependencies.fidl_fuchsia_fxfs]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/cc4e139c83b7899ae777f15ee222e00e1c6fc955"
+
+#[dependencies.fidl_fuchsia_fs_startup]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/7d338df6342a37410c6b54d9b7af412e3dd9bad9"
+
+#[dependencies.fuchsia_zircon]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/21a7418b050df5d3ead19e2482dd0c90765f7075"
+
+#[dependencies.fuchsia_trace]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/10149d86cc2f126d75d7d3ff842ecf6366b10563"
+
+#[dependencies.vfs]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/30b7428ee22727ad192e0610f5e6935ba4b688ed"
+
+[dependencies.storage_device]
+version = "0.0.1"
+path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/2bf3d6fd6a229f1821e4b4a7c0d01c7d973d1d67"
+
+#[dependencies.fs_inspect]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/5bbf0474f0905e874ed019abda9feccb84ed79d7"
+#
+#[dependencies.remote_block_device]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/843b914fb20a80b28627e312714ca14a16ddd77d"
+#
+#[dependencies.fuchsia_component]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/c6061cbdd5a0083c0cdf2f92c556a2ca340559a9"
+#
+[dependencies.fuchsia_async]
+version = "0.0.1"
+path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/ae8aa7e7f32fb4524d12b6dedf184f45e5670c59"
+#
+#[dependencies.fidl]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/cf351ae3274c19778aa8a0a6421bd912785f1cdc"
+
+[dependencies.fuchsia_inspect]
+version = "0.0.1"
+path = "/home/hao/fuchsia_inspect"
+
+#[dependencies.inspect_runtime]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/a1fef76782c0b58f27fa9d826d6783da3d825b2e"
+#
+[dependencies.async_utils]
+version = "0.0.1"
+path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/ce218e03e2a48902ab62a4cbc6bbe5d3ebdc3e43"
+#
+#[dependencies.fidl_fuchsia_process_lifecycle]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/04f69bcef36ac92db289df7c59e0fdf0c1dc7b79"
+#
+#[dependencies.fidl_fuchsia_memorypressure]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/c4dab6125dedfdbaab8a65e8328fb8322d759bd4"
+#
+#[dependencies.fidl_fuchsia_io]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/85d2b5f4d581759ca06b964fd7b60d3d0e120b9e"
+#
+#[dependencies.fidl_fuchsia_hardware_block]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/021440122d21a44d35f6d4493097dd2348cfde28"
+#
+#[dependencies.fidl_fuchsia_hardware_block_volume]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/24d7f22a0a362298fe8545ab191627a4804aab72"
+#
+#[dependencies.fidl_fuchsia_fs]
+#version = "0.0.1"
+#path = "/home/hao/fuchsia/out/core.qemu-x64/cargo/ba4d184e8227dbcd975111f942c4b42723ff7464"
+#
+
+[features]
+default = ["tracing"]
