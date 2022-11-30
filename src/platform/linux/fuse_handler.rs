@@ -23,7 +23,10 @@ use fuse3::{
 };
 use futures_util::stream::{Empty, Iter};
 use std::{ffi::OsStr, io::Write, time::Duration, vec::IntoIter};
+use libc::mq_getattr;
 use tracing::Level;
+use crate::object_store::Timestamp;
+use crate::platform::linux::attr::{create_dir_attr, create_file_attr};
 
 const TTL: Duration = Duration::from_secs(1);
 const DEFAULT_FILE_MODE: u32 = 0o755;
@@ -301,7 +304,14 @@ impl FuseFilesystem for FuseFs {
         _fh: Option<u64>,
         _flags: u32,
     ) -> Result<ReplyAttr> {
-        unimplemented!()
+        if let Some(object_type) = self.get_object_type(inode).await? {
+            Ok(ReplyAttr {
+                ttl: TTL,
+                attr: self.create_object_attr(inode, object_type).await?
+            })
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn setattr(
@@ -311,19 +321,46 @@ impl FuseFilesystem for FuseFs {
         _fh: Option<u64>,
         set_attr: SetAttr,
     ) -> Result<ReplyAttr> {
-        unimplemented!()
+        if let Some(object_type) = self.get_object_type(inode).await? {
+            let handle = self.get_object_handle(inode).await?;
+            let mut transaction = self
+                .fs
+                .clone()
+                .new_transaction(&[], Options::default())
+                .await
+                .parse_error()?;
+
+            let ctime: Option<Timestamp> = match set_attr.ctime {
+                Some(t) => Some(t.into()),
+                None => None
+            };
+            let mtime: Option<Timestamp> = match set_attr.mtime {
+                Some(t) => Some(t.into()),
+                None => None
+            };
+
+            handle.write_timestamps(&mut transaction, ctime, mtime);
+            transaction.commit().await.parse_error()?;
+
+            Ok(ReplyAttr {
+                ttl: TTL,
+                attr: self.create_object_attr(inode, object_type).await?
+            })
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn fsync(&self, _req: Request, _inode: u64, _fh: u64, _datasync: bool) -> Result<()> {
-        unimplemented!()
+        Err(libc::ENOTSUP.into())
     }
 
     async fn flush(&self, _req: Request, _inode: u64, _fh: u64, _lock_owner: u64) -> Result<()> {
-        unimplemented!()
+        Err(libc::ENOTSUP.into())
     }
 
     async fn access(&self, _req: Request, _inode: u64, _mask: u32) -> Result<()> {
-        unimplemented!()
+        Err(libc::ENOTSUP.into())
     }
 
     async fn create(
@@ -334,13 +371,42 @@ impl FuseFilesystem for FuseFs {
         mode: u32,
         flags: u32,
     ) -> Result<ReplyCreated> {
-        unimplemented!()
+        let dir = self.open_dir(parent).await?;
+        if dir.lookup(name.parse_str()?).await.parse_error()?.is_none() {
+            let mut transaction = self
+                .fs
+                .clone()
+                .new_transaction(&[], Options::default())
+                .await
+                .parse_error()?;
+
+            let child_file = dir
+                .create_child_file(&mut transaction, name.parse_str()?)
+                .await
+                .parse_error()?;
+
+            transaction.commit().await.parse_error()?;
+            self.fs.sync(SyncOptions::default()).await.parse_error()?;
+
+            Ok(ReplyCreated {
+                ttl: TTL,
+                attr: self
+                    .create_object_attr(child_file.object_id(), ObjectDescriptor::File)
+                    .await?,
+                generation: 0,
+                fh: 0,
+                flags,
+            })
+        } else {
+            Err(libc::EEXIST.into())
+        }
     }
 
     async fn interrupt(&self, _req: Request, _unique: u64) -> Result<()> {
-        unimplemented!()
+        Err(libc::ENOTSUP.into())
     }
 
+    /// Currently no support for offset
     async fn fallocate(
         &self,
         _req: Request,
@@ -350,7 +416,18 @@ impl FuseFilesystem for FuseFs {
         length: u64,
         _mode: u32,
     ) -> Result<()> {
-        unimplemented!()
+        if let Some(object_type) = self.get_object_type(inode).await? {
+            if object_type == ObjectDescriptor::File {
+                let handle = self.get_object_handle(inode).await?;
+                handle.truncate(length).await.parse_error()?;
+                handle.flush().await.parse_error()?;
+                Ok(())
+            } else {
+                Err(libc::EISDIR.into())
+            }
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn readdirplus(

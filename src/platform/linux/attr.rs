@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::object_store::Timestamp;
+use crate::object_store::{ObjectDescriptor, Timestamp};
 use fuse3::{raw::prelude::FileAttr, FileType};
 use std::time::SystemTime;
 
@@ -59,5 +59,11 @@ pub fn create_file_attr(
 impl From<Timestamp> for fuse3::Timestamp {
     fn from(time: Timestamp) -> fuse3::Timestamp {
         fuse3::Timestamp::new(time.secs as i64, time.nanos)
+    }
+}
+
+impl From<fuse3::Timestamp> for Timestamp {
+    fn from(time: fuse3::Timestamp) -> Timestamp {
+        Timestamp { secs: time.sec as u64, nanos: time.nsec}
     }
 }
