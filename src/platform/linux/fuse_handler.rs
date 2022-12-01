@@ -438,7 +438,34 @@ impl FuseFilesystem for FuseFs {
         offset: u64,
         _lock_owner: u64,
     ) -> Result<ReplyDirectoryPlus<Self::DirEntryPlusStream>> {
-        unimplemented!()
+        if let Some(object_type) = self.get_object_type(inode).await? {
+            if object_type == ObjectDescriptor::Directory {
+                let parent_attr = self.create_object_attr(inode, ObjectDescriptor::Directory).await?;
+                let grandparent_attr = self.create_object_attr(inode, ObjectDescriptor::Directory).await?;
+
+                let pre_children = stream::iter(
+                    vec![
+                        (parent, FileType::Directory, OsString::from("."), parent_attr, 1),
+                        (
+                            grandparent,
+                            FileType::Directory,
+                            OsString::from(".."),
+                            grandparent_attr,
+                            2,
+                        ),
+                    ]
+                        .into_iter(),
+                );
+
+                Ok(ReplyDirectoryPlus {
+                    entries: stream::iter(pre_children),
+                })
+            } else {
+                Err(libc::ENOTDIR.into())
+            }
+        } else {
+            Err(libc::ENOENT.into())
+        }
     }
 
     async fn rename2(
