@@ -27,16 +27,6 @@ use fxfs::object_store::{Directory, HandleOptions, ObjectDescriptor, ObjectStore
 use fxfs::object_store::transaction::{Options, TransactionHandler};
 
 
-fn default_request() -> Request {
-    Request {
-        unique: 0,
-        uid: 0,
-        gid: 0,
-        pid: 0
-    }
-}
-
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     log_init();
@@ -57,45 +47,12 @@ async fn main() {
         .gid(gid);
 
     let fs = FuseFs::new_faked().await;
-    let store_object_id = fs.default_store().await.unwrap().store_object_id();
-    let dir = fs.root_dir().await;
-    let dir_object_id = dir.unwrap().object_id();
 
-    let mut transaction = fs.fs
-        .clone()
-        .new_transaction(&[], Options::default())
+    let mount_path = mount_path.expect("no mount point specified");
+    Session::new(mount_options)
+        .mount_with_unprivileged(fs, mount_path)
         .await
-        .expect("new_transaction failed");
-    let dir = Directory::create(&mut transaction, &fs.fs.root_store())
+        .unwrap()
         .await
-        .expect("create failed");
-
-    let child_dir = dir
-        .create_child_dir(&mut transaction, "foo")
-        .await
-        .expect("create_child_dir failed");
-
-    transaction.commit().await.expect("commit failed");
-    let _child_dir_file =
-        ObjectStore::open_object(&fs.fs.root_store(), child_dir.object_id(), HandleOptions::default(), None)
-            .await
-            .expect("open object failed");
-
-    // let res = fs.open_dir(dir_object_id).await;
-
-    let res = fs.mkdir(default_request(), dir_object_id, OsStr::new("dog"), 0, 0).await;
-    println!("{:?}", res);
-    //
-    // // let x= fs.lookup(default_request(), object_id, OsStr::new("dog")).await.unwrap();
-    // let dir = fs.open_dir(object_id).await.unwrap();
-    // let (_, object_descriptor) = dir.lookup(OsStr::new("dog").parse_str().unwrap()).await.unwrap().unwrap();
-    // assert_eq!(object_descriptor, ObjectDescriptor::Directory);
-
-    // let mount_path = mount_path.expect("no mount point specified");
-    // Session::new(mount_options)
-    //     .mount_with_unprivileged(fs, mount_path)
-    //     .await
-    //     .unwrap()
-    //     .await
-    //     .unwrap();
+        .unwrap();
 }
