@@ -207,7 +207,8 @@ impl OpenFxFilesystem {
             .set(sender)
             .unwrap_or_else(|_| panic!("take_device should only be called once"));
         std::mem::drop(self);
-        debug_assert_not_too_long!(receiver).unwrap()
+        println!("before recieve");
+        receiver.await.unwrap()
     }
 }
 
@@ -407,8 +408,10 @@ impl FxFilesystem {
     }
 
     pub async fn close(&self) -> Result<(), Error> {
-        assert_eq!(self.closed.swap(true, atomic::Ordering::SeqCst), false);
-        debug_assert_not_too_long!(self.graveyard.wait_for_reap());
+        // todo: recover this
+        //assert_eq!(self.closed.swap(true, atomic::Ordering::SeqCst), false);
+        // todo: recover this
+        //self.graveyard.wait_for_reap().await;
         self.journal.stop_compactions().await;
         let sync_status =
             self.journal.sync(SyncOptions { flush_device: true, ..Default::default() }).await;
@@ -418,7 +421,8 @@ impl FxFilesystem {
         self.journal.terminate();
         let flush_task = self.flush_task.lock().unwrap().take();
         if let Some(task) = flush_task {
-            debug_assert_not_too_long!(task);
+            // todo: recover this
+            //task.await;
         }
         // Regardless of whether sync succeeds, we should close the device, since otherwise we will
         // crash instead of exiting gracefully.

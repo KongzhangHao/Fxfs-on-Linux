@@ -1074,17 +1074,18 @@ impl Journal {
     }
 
     async fn flush_device(&self, checkpoint_offset: u64) -> Result<(), Error> {
-        debug_assert_not_too_long!(poll_fn(|ctx| {
-            let mut inner = self.inner.lock().unwrap();
-            if inner.flushed_offset >= checkpoint_offset {
-                Poll::Ready(Ok(()))
-            } else if inner.terminate {
-                Poll::Ready(Err(FxfsError::JournalFlushError))
-            } else {
-                inner.sync_waker = Some(ctx.waker().clone());
-                Poll::Pending
-            }
-        }))?;
+        // todo: recover this
+        // debug_assert_not_too_long!(poll_fn(|ctx| {
+        //     let mut inner = self.inner.lock().unwrap();
+        //     if inner.flushed_offset >= checkpoint_offset {
+        //         Poll::Ready(Ok(()))
+        //     } else if inner.terminate {
+        //         Poll::Ready(Err(FxfsError::JournalFlushError))
+        //     } else {
+        //         inner.sync_waker = Some(ctx.waker().clone());
+        //         Poll::Pending
+        //     }
+        // }))?;
 
         let needs_flush = self.inner.lock().unwrap().device_flushed_offset < checkpoint_offset;
         if needs_flush {
