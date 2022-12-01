@@ -85,9 +85,18 @@ impl FuseFs {
             .parse_error()
     }
 
-    pub async fn get_object_properties(&self, object_id: u64) -> Result<ObjectProperties> {
-        let handle = self.get_object_handle(object_id).await?;
-        handle.get_properties().await.parse_error()
+    pub async fn get_object_properties(
+        &self,
+        object_id: u64,
+        object_type: ObjectDescriptor,
+    ) -> Result<ObjectProperties> {
+        if object_type == ObjectDescriptor::File {
+            let handle = self.get_object_handle(object_id).await?;
+            handle.get_properties().await.parse_error()
+        } else {
+            let dir = self.open_dir(object_id).await?;
+            dir.get_properties().await.parse_error()
+        }
     }
 
     pub async fn get_object_type(&self, object_id: u64) -> Result<Option<ObjectDescriptor>> {
@@ -120,7 +129,9 @@ impl FuseFs {
         object_id: u64,
         object_type: ObjectDescriptor,
     ) -> Result<FileAttr> {
-        let properties = self.get_object_properties(object_id).await?;
+        let properties = self
+            .get_object_properties(object_id, object_type.clone())
+            .await?;
         match object_type {
             ObjectDescriptor::Directory => Ok(create_dir_attr(
                 object_id,
