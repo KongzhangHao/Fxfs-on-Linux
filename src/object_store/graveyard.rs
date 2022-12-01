@@ -122,7 +122,9 @@ impl Graveyard {
         self.channel.close_channel();
         let task = std::mem::replace(&mut *self.reaper_task.lock().unwrap(), ReaperTask::None);
         if let ReaperTask::Running(task) = task {
+            println!("task");
             task.await;
+            println!("after task");
         }
     }
 
