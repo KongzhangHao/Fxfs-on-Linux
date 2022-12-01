@@ -18,12 +18,24 @@ use fuse3::{Errno, MountOptions, Result};
 use futures_util::stream;
 use futures_util::stream::{Empty, Iter};
 use futures_util::StreamExt;
-use fxfs::platform::linux::fuse_fs::FuseFs;
+use fxfs::platform::linux::fuse_fs::{FuseFs, FuseStrParser};
 use fxfs::platform::linux::fuse_handler::log_init;
-use fxfs::platform::linux::mem_fs::Fs;
 use libc::mode_t;
 use tokio::sync::RwLock;
 use tracing::Level;
+use fxfs::object_store::{Directory, HandleOptions, ObjectDescriptor, ObjectStore};
+use fxfs::object_store::transaction::{Options, TransactionHandler};
+
+
+fn default_request() -> Request {
+    Request {
+        unique: 0,
+        uid: 0,
+        gid: 0,
+        pid: 0
+    }
+}
+
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -39,21 +51,51 @@ async fn main() {
     let mut mount_options = MountOptions::default();
     // .allow_other(true)
     mount_options
-        .fs_name("memfs")
+        .fs_name("fxfs")
         .force_readdir_plus(true)
         .uid(uid)
         .gid(gid);
 
     let fs = FuseFs::new_faked().await;
-    fs.fs.close().await.expect("Close failed");
-    println!("!!!!!!");
-    let fs = Fs::default();
+    let store_object_id = fs.default_store().await.unwrap().store_object_id();
+    let dir = fs.root_dir().await;
+    let dir_object_id = dir.unwrap().object_id();
 
-    let mount_path = mount_path.expect("no mount point specified");
-    Session::new(mount_options)
-        .mount_with_unprivileged(fs, mount_path)
+    let mut transaction = fs.fs
+        .clone()
+        .new_transaction(&[], Options::default())
         .await
-        .unwrap()
+        .expect("new_transaction failed");
+    let dir = Directory::create(&mut transaction, &fs.fs.root_store())
         .await
-        .unwrap();
+        .expect("create failed");
+
+    let child_dir = dir
+        .create_child_dir(&mut transaction, "foo")
+        .await
+        .expect("create_child_dir failed");
+
+    transaction.commit().await.expect("commit failed");
+    let _child_dir_file =
+        ObjectStore::open_object(&fs.fs.root_store(), child_dir.object_id(), HandleOptions::default(), None)
+            .await
+            .expect("open object failed");
+
+    // let res = fs.open_dir(dir_object_id).await;
+
+    let res = fs.mkdir(default_request(), dir_object_id, OsStr::new("dog"), 0, 0).await;
+    println!("{:?}", res);
+    //
+    // // let x= fs.lookup(default_request(), object_id, OsStr::new("dog")).await.unwrap();
+    // let dir = fs.open_dir(object_id).await.unwrap();
+    // let (_, object_descriptor) = dir.lookup(OsStr::new("dog").parse_str().unwrap()).await.unwrap().unwrap();
+    // assert_eq!(object_descriptor, ObjectDescriptor::Directory);
+
+    // let mount_path = mount_path.expect("no mount point specified");
+    // Session::new(mount_options)
+    //     .mount_with_unprivileged(fs, mount_path)
+    //     .await
+    //     .unwrap()
+    //     .await
+    //     .unwrap();
 }
