@@ -91,7 +91,6 @@ impl FuseFilesystem for FuseFs {
                 .parse_error()?;
 
             transaction.commit().await.parse_error()?;
-            self.fs.sync(SyncOptions::default()).await.parse_error()?;
 
             Ok(ReplyEntry {
                 ttl: TTL,
@@ -359,7 +358,7 @@ impl FuseFilesystem for FuseFs {
     }
 
     async fn fsync(&self, _req: Request, _inode: u64, _fh: u64, _datasync: bool) -> Result<()> {
-        Err(libc::ENOTSUP.into())
+        Ok(self.fs.sync(SyncOptions::default()).await.parse_error()?)
     }
 
     async fn flush(&self, _req: Request, _inode: u64, _fh: u64, _lock_owner: u64) -> Result<()> {
@@ -393,7 +392,6 @@ impl FuseFilesystem for FuseFs {
                 .parse_error()?;
 
             transaction.commit().await.parse_error()?;
-            self.fs.sync(SyncOptions::default()).await.parse_error()?;
 
             Ok(ReplyCreated {
                 ttl: TTL,
@@ -542,7 +540,7 @@ impl FuseFilesystem for FuseFs {
         offset: u64,
         whence: u32,
     ) -> Result<ReplyLSeek> {
-        unimplemented!()
+        Err(libc::ENOTSUP.into())
     }
 
     async fn copy_file_range(
@@ -557,7 +555,7 @@ impl FuseFilesystem for FuseFs {
         length: u64,
         flags: u64,
     ) -> Result<ReplyCopyFileRange> {
-        unimplemented!()
+        Err(libc::ENOTSUP.into())
     }
 }
 
