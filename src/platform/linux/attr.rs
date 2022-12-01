@@ -64,6 +64,9 @@ impl From<Timestamp> for fuse3::Timestamp {
 
 impl From<fuse3::Timestamp> for Timestamp {
     fn from(time: fuse3::Timestamp) -> Timestamp {
-        Timestamp { secs: time.sec as u64, nanos: time.nsec}
+        Timestamp {
+            secs: time.sec as u64,
+            nanos: time.nsec,
+        }
     }
 }

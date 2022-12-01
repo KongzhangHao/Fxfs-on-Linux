@@ -8,9 +8,10 @@ use crate::{
     object_store::{
         directory::{replace_child, ReplacedChild},
         transaction::{Options, TransactionHandler},
-        Directory, ObjectDescriptor,
+        Directory, ObjectDescriptor, Timestamp,
     },
     platform::linux::{
+        attr::{create_dir_attr, create_file_attr},
         errors::FuseErrorParser,
         fuse_fs::{FuseFs, FuseStrParser},
     },
@@ -21,12 +22,18 @@ use fuse3::{
     raw::prelude::{Filesystem as FuseFilesystem, *},
     Result,
 };
-use futures_util::stream::{Empty, Iter};
-use std::{ffi::OsStr, io::Write, time::Duration, vec::IntoIter};
+use futures_util::{
+    stream,
+    stream::{Empty, Iter},
+};
 use libc::mq_getattr;
+use std::{
+    ffi::{OsStr, OsString},
+    io::Write,
+    time::Duration,
+    vec::IntoIter,
+};
 use tracing::Level;
-use crate::object_store::Timestamp;
-use crate::platform::linux::attr::{create_dir_attr, create_file_attr};
 
 const TTL: Duration = Duration::from_secs(1);
 const DEFAULT_FILE_MODE: u32 = 0o755;
@@ -307,7 +314,7 @@ impl FuseFilesystem for FuseFs {
         if let Some(object_type) = self.get_object_type(inode).await? {
             Ok(ReplyAttr {
                 ttl: TTL,
-                attr: self.create_object_attr(inode, object_type).await?
+                attr: self.create_object_attr(inode, object_type).await?,
             })
         } else {
             Err(libc::ENOENT.into())
@@ -332,11 +339,11 @@ impl FuseFilesystem for FuseFs {
 
             let ctime: Option<Timestamp> = match set_attr.ctime {
                 Some(t) => Some(t.into()),
-                None => None
+                None => None,
             };
             let mtime: Option<Timestamp> = match set_attr.mtime {
                 Some(t) => Some(t.into()),
-                None => None
+                None => None,
             };
 
             handle.write_timestamps(&mut transaction, ctime, mtime);
@@ -344,7 +351,7 @@ impl FuseFilesystem for FuseFs {
 
             Ok(ReplyAttr {
                 ttl: TTL,
-                attr: self.create_object_attr(inode, object_type).await?
+                attr: self.create_object_attr(inode, object_type).await?,
             })
         } else {
             Err(libc::ENOENT.into())
@@ -438,27 +445,74 @@ impl FuseFilesystem for FuseFs {
         offset: u64,
         _lock_owner: u64,
     ) -> Result<ReplyDirectoryPlus<Self::DirEntryPlusStream>> {
-        if let Some(object_type) = self.get_object_type(inode).await? {
+        if let Some(object_type) = self.get_object_type(parent).await? {
             if object_type == ObjectDescriptor::Directory {
-                let parent_attr = self.create_object_attr(inode, ObjectDescriptor::Directory).await?;
-                let grandparent_attr = self.create_object_attr(inode, ObjectDescriptor::Directory).await?;
+                let parent_attr = self
+                    .create_object_attr(parent, ObjectDescriptor::Directory)
+                    .await?;
+                let dir = self.open_dir(parent).await?;
+                // TODO Currently using the attribute of the same dir. Need to change to the parent one.
+                let grandparent = parent;
+                let grandparent_attr = self
+                    .create_object_attr(grandparent, ObjectDescriptor::Directory)
+                    .await?;
 
-                let pre_children = stream::iter(
-                    vec![
-                        (parent, FileType::Directory, OsString::from("."), parent_attr, 1),
-                        (
-                            grandparent,
-                            FileType::Directory,
-                            OsString::from(".."),
-                            grandparent_attr,
-                            2,
-                        ),
-                    ]
-                        .into_iter(),
-                );
+                let mut children = vec![
+                    Ok(DirectoryEntryPlus {
+                        inode: parent,
+                        generation: 0,
+                        kind: FileType::Directory,
+                        name: OsString::from("."),
+                        offset: 1,
+                        attr: parent_attr,
+                        entry_ttl: TTL,
+                        attr_ttl: TTL,
+                    }),
+                    Ok(DirectoryEntryPlus {
+                        inode: grandparent,
+                        generation: 0,
+                        kind: FileType::Directory,
+                        name: OsString::from(".."),
+                        offset: 2,
+                        attr: grandparent_attr,
+                        entry_ttl: TTL,
+                        attr_ttl: TTL,
+                    }),
+                ];
+
+                let layer_set = dir.store().tree().layer_set();
+                let mut merger = layer_set.merger();
+                let mut iter = dir.iter(&mut merger).await.parse_error()?;
+                let mut skip_ofs = offset;
+                let mut entry_ofs = 3i64;
+
+                while let Some((name, object_id, descriptor)) = iter.get() {
+                    while skip_ofs > 0 {
+                        skip_ofs -= 1;
+                        continue;
+                    }
+                    let file_type = match descriptor {
+                        ObjectDescriptor::File => FileType::RegularFile,
+                        _ => FileType::Directory,
+                    };
+
+                    children.push(Ok(DirectoryEntryPlus {
+                        inode: grandparent,
+                        generation: 0,
+                        kind: file_type,
+                        name: OsString::from(name),
+                        offset: entry_ofs,
+                        attr: self
+                            .create_object_attr(grandparent, descriptor.clone())
+                            .await?,
+                        entry_ttl: TTL,
+                        attr_ttl: TTL,
+                    }));
+                    entry_ofs += 1;
+                }
 
                 Ok(ReplyDirectoryPlus {
-                    entries: stream::iter(pre_children),
+                    entries: stream::iter(children),
                 })
             } else {
                 Err(libc::ENOTDIR.into())

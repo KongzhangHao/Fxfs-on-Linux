@@ -7,9 +7,8 @@ use crate::{
     filesystem::{FxFilesystem, OpenFxFilesystem},
     object_handle::{GetProperties, ObjectProperties},
     object_store::{
-        ObjectKey, ObjectKind, ObjectValue,
         transaction::Transaction, volume::root_volume, Directory, HandleOptions, ObjectDescriptor,
-        ObjectStore, StoreObjectHandle,
+        ObjectKey, ObjectKind, ObjectStore, ObjectValue, StoreObjectHandle,
     },
     platform::linux::{
         attr::{create_dir_attr, create_file_attr},
@@ -18,11 +17,11 @@ use crate::{
 };
 use fuse3::{raw::prelude::*, Result};
 use std::{
+    error::Error,
+    ffi::OsStr,
     fmt::{Debug, Formatter},
     sync::Arc,
     time::Duration,
-    ffi::OsStr,
-    error::Error
 };
 use storage_device::{fake_device::FakeDevice, DeviceHolder};
 use tokio::sync::RwLock;
